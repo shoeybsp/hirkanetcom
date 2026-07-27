@@ -947,3 +947,90 @@
 @media (prefers-reduced-motion: reduce) {
     .hk-reveal { opacity: 1; transform: none; transition: none; }
 }
+
+/* Public light-theme refinement */
+:root { --hk-cyan: #0676c8; --hk-cyan-dim: #e8f5ff; }
+
+.hk-nav {
+    padding: 14px 0;
+    background: rgba(255,255,255,.84);
+    border-color: rgba(205,218,233,.9);
+    box-shadow: 0 8px 30px rgba(31,55,86,.05);
+}
+.hk-nav-brand span, .hk-nav-links a:hover, .hk-nav-links a.is-active { color: #172033; }
+.hk-nav-links a { color: #607086; }
+.hk-btn { min-height: 44px; border-radius: 999px; }
+.hk-btn-primary { background: linear-gradient(135deg, #2563eb, #0b64d8); box-shadow: 0 12px 28px rgba(37,99,235,.2); }
+.hk-btn-ghost { border-color: #cfdae7; background: rgba(255,255,255,.65); color: #334155; }
+.hk-btn-ghost:hover { border-color: #8fb4df; background: #fff; color: #1d4ed8; }
+.hk-eyebrow { color: #0969b1; }
+.hk-eyebrow::before { background: #0ea5e9; box-shadow: 0 0 0 5px rgba(14,165,233,.1); }
+
+.hk-hero {
+    padding: 92px 0 72px;
+    background:
+        radial-gradient(circle at 4% 0%, rgba(37,99,235,.13), transparent 36rem),
+        radial-gradient(circle at 96% 12%, rgba(14,165,233,.11), transparent 32rem),
+        linear-gradient(180deg, rgba(255,255,255,.72), rgba(245,248,252,0));
+}
+.hk-hero-title { max-width: 720px; color: #111d33; letter-spacing: -.045em; }
+.hk-hero-title em { background: linear-gradient(110deg, #0b75bd, #2563eb); -webkit-background-clip: text; background-clip: text; }
+.hk-hero-sub { color: #5e6f85; }
+.hk-capability-chip { color: #40516a; background: rgba(255,255,255,.72); border-color: #d7e1ec; box-shadow: 0 3px 12px rgba(31,55,86,.04); }
+
+.hk-evaluator { border-color: #d7e1ec; background: rgba(255,255,255,.94); box-shadow: 0 28px 70px rgba(31,55,86,.13); }
+.hk-evaluator-label { color: #718096; }
+.hk-evaluator-dots span { background: #cbd5e1; }
+.hk-req-line, .hk-scan-track { background: #f4f7fb; border-color: #dce5ef; }
+.hk-req-line { color: #334155; }
+.hk-scan-track span { color: #47617f; }
+.hk-scan-fill { background: linear-gradient(90deg, rgba(37,99,235,.12), rgba(14,165,233,.2)); }
+.hk-decision { background: #ecfdf5; border-color: #b7ead3; }
+.hk-decision-label { color: #087653; }
+.hk-decision-meta { color: #3e8069; }
+
+.hk-section { border-color: #e1e9f2; }
+.hk-section-title, .hk-pillar h3, .hk-step h4, .hk-cta-band h3, .hk-post-title { color: #172033; letter-spacing: -.025em; }
+.hk-section-sub, .hk-pillar p, .hk-step p, .hk-cta-band p, .hk-post-excerpt, .hk-post-meta { color: #66758b; }
+.hk-pillar, .hk-post-card { border-color: #dde6f0; background: rgba(255,255,255,.9); box-shadow: 0 10px 30px rgba(31,55,86,.05); }
+.hk-pillar:hover, .hk-post-card:hover { border-color: #a9c6e8; box-shadow: 0 18px 42px rgba(31,55,86,.1); }
+.hk-pillar-icon { background: #e8f5ff; color: #0676c8; }
+.hk-step { border-color: #dbe5ef; }
+
+.hk-cta-band {
+    border-color: #cbdcf0;
+    background:
+        radial-gradient(circle at 10% 10%, rgba(14,165,233,.12), transparent 48%),
+        linear-gradient(135deg, #f8fbff, #edf4fc);
+    box-shadow: 0 22px 55px rgba(31,55,86,.08);
+}
+
+.hk-post-cover { background: #eaf0f7; }
+.hk-post-cover.hk-pattern {
+    background-image:
+        linear-gradient(rgba(247,250,253,.38), rgba(237,244,251,.72)),
+        repeating-linear-gradient(0deg, rgba(37,99,235,.12) 0 1px, transparent 1px 28px),
+        repeating-linear-gradient(90deg, rgba(14,165,233,.11) 0 1px, transparent 1px 28px),
+        linear-gradient(135deg, #dcecff, #f2f7fc);
+}
+.hk-footer { border-color: #dce5ef; background: #eef4fa; color: #5f7086; }
+.hk-footer-brand span, .hk-footer-col h5 { color: #172033; }
+.hk-footer a { color: #5f7086; }
+.hk-footer a:hover { color: #1d4ed8; }
+
+#product .row > div { border-color: #dce5ef !important; background: rgba(255,255,255,.92) !important; box-shadow: 0 10px 28px rgba(31,55,86,.05); }
+#product .row > div h4 { color: #172033 !important; }
+#product .row > div p { color: #66758b !important; }
+
+@media (max-width: 860px) {
+    .hk-nav { padding: 12px 0; }
+    .hk-nav-cta { gap: 8px; }
+    .hk-nav-cta .hk-btn-primary { padding-inline: 1rem; }
+    .hk-hero { padding-top: 58px; }
+}
+
+@media (max-width: 560px) {
+    .hk-nav-brand span { display: none; }
+    .hk-hero-actions .hk-btn { width: 100%; }
+    .hk-cta-band { padding: 34px 24px; }
+}
