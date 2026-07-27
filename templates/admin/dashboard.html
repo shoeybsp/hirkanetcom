@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+</head>
+<body>
+<div class="container py-4 main-container">
+
+    <header class="stl-header mb-4">
+        <div class="stl-brand">
+            <div>
+                <h1 class="stl-title">Admin Dashboard</h1>
+                <p class="stl-subtitle">System administration and settings</p>
+            </div>
+        </div>
+        <div class="stl-user-nav">
+            <span class="stl-user-info">
+                <span class="stl-user-role-badge stl-user-role-admin">admin</span>
+                <span class="stl-username">{{ current_user.username }}</span>
+            </span>
+            <a href="{{ url_for('admin.profile') }}" class="stl-nav-link" title="Profile">Profile</a>
+            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</a>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card stl-card text-center h-100">
+                <div class="card-body">
+                    <h3 class="display-4">{{ user_count }}</h3>
+                    <p class="text-muted mb-0">Total Users</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stl-card text-center h-100">
+                <div class="card-body">
+                    <h3 class="display-4">{{ service_count }}</h3>
+                    <p class="text-muted mb-0">Services</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stl-card text-center h-100">
+                <div class="card-body">
+                    <h3 class="display-4">{{ subscription_count }}</h3>
+                    <p class="text-muted mb-0">Subscriptions</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stl-card text-center h-100">
+                <div class="card-body">
+                    <h3 class="display-4">{{ blog_post_count }}</h3>
+                    <p class="text-muted mb-0">Blog Posts</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">User Management</h2>
+                </div>
+                <div class="card-body">
+                    <p>Create, edit, and manage user accounts. Assign roles and manage service subscriptions.</p>
+                    <a href="{{ url_for('admin.user_list') }}" class="btn btn-primary stl-btn-primary">Manage Users</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">Services Settings</h2>
+                </div>
+                <div class="card-body">
+                    <p>Configure available services. Add new services or modify existing ones for the platform.</p>
+                    <a href="{{ url_for('admin.service_list') }}" class="btn btn-primary stl-btn-primary">Manage Services</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">Blog Posts</h2>
+                </div>
+                <div class="card-body">
+                    <p>Write, edit, and publish posts on the public Hirkanet blog. {{ blog_post_count }} post{{ 's' if blog_post_count != 1 else '' }} total.</p>
+                    <a href="{{ url_for('admin.blog_post_list') }}" class="btn btn-primary stl-btn-primary">Manage Blog Posts</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">Blog Categories</h2>
+                </div>
+                <div class="card-body">
+                    <p>Organize posts into categories visitors can filter by. {{ blog_category_count }} categor{{ 'y' if blog_category_count == 1 else 'ies' }} total.</p>
+                    <a href="{{ url_for('admin.blog_category_list') }}" class="btn btn-primary stl-btn-primary">Manage Categories</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="stl-footer mt-4">
+        <span class="stl-footer-text">SecureTrack-Lite · Admin Panel</span>
+    </footer>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

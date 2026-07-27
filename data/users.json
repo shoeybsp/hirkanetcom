@@ -1,0 +1,8 @@
+{
+  "admin": {
+    "id": "b9582fc219c0ce54e5934cddd7dcf4ce",
+    "password_hash": "64626eca837b98fe66864074ff866fda0bf0057f6e19aa51a35654facf0ec9d1",
+    "salt": "881c8ae7d3711c131919632ff7f2577841a059dc600a9c1dfd4e3d4ffc1917aa",
+    "role": "admin"
+  }
+}

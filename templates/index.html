@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+</head>
+
+<body>
+<div class="container py-4 main-container">
+
+    <header class="stl-header mb-4">
+        <div class="stl-brand">
+            <img class="stl-logo"
+                 src="{{ url_for('static', filename='logo.jpg') }}"
+                 alt="SecureTrack-Lite logo">
+            <div>
+                <h1 class="stl-title">SecureTrack-Lite</h1>
+                <p class="stl-subtitle">
+                    Lightweight policy evaluation for new access requests
+                </p>
+            </div>
+        </div>
+        <div class="stl-user-nav">
+            <span class="stl-user-info">
+                <span class="stl-user-role-badge stl-user-role-{{ current_user.role }}">
+                    {{ current_user.role }}
+                </span>
+                <span class="stl-username">{{ current_user.username }}</span>
+            </span>
+            <a href="{{ url_for('profile') }}" class="stl-nav-link" title="Profile">Profile</a>
+            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</a>
+        </div>
+    </header>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">New Access Request</h2>
+                </div>
+                <div class="card-body">
+
+                    <form action="/results" method="POST" class="stl-form">
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold label-color">
+                                Source Addresses
+                            </label>
+                            <div class="stl-service-select" id="srcSelect">
+                                <div class="stl-selected-services" id="srcSelected"></div>
+                                <input class="form-control stl-input stl-service-search"
+                                       id="srcSearch"
+                                       type="search"
+                                       autocomplete="off"
+                                       placeholder="Search and select source addresses">
+                                <input id="srcValue" name="src" type="hidden">
+                                <div class="stl-service-menu" id="srcMenu">
+                                    <div class="stl-service-empty" id="srcEmpty">
+                                        No addresses found.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text stl-help-text">
+                                Select one or more address objects from addresses.json.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold label-color">
+                                Destination Addresses
+                            </label>
+                            <div class="stl-service-select" id="dstSelect">
+                                <div class="stl-selected-services" id="dstSelected"></div>
+                                <input class="form-control stl-input stl-service-search"
+                                       id="dstSearch"
+                                       type="search"
+                                       autocomplete="off"
+                                       placeholder="Search and select destination addresses">
+                                <input id="dstValue" name="dst" type="hidden">
+                                <div class="stl-service-menu" id="dstMenu">
+                                    <div class="stl-service-empty" id="dstEmpty">
+                                        No addresses found.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text stl-help-text">
+                                Select one or more address objects from addresses.json.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold label-color">
+                                Services (FortiGate names)
+                            </label>
+                            <div class="stl-service-select" id="serviceSelect">
+                                <div class="stl-selected-services" id="selectedServices"></div>
+                                <input class="form-control stl-input stl-service-search"
+                                       id="serviceSearch"
+                                       type="search"
+                                       autocomplete="off"
+                                       placeholder="Search and select services">
+                                <input id="serviceValue" name="service" type="hidden">
+                                <div class="stl-service-menu" id="serviceMenu">
+                                    <div class="stl-service-empty" id="serviceEmpty">
+                                        No services found.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text stl-help-text">
+                                Search, then choose one or more existing service objects.
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary stl-btn-primary">
+                            Evaluate Policies
+                        </button>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">Batch CSV Upload</h2>
+                </div>
+                <div class="card-body">
+                    <p class="stl-help-text mb-3">
+                        Upload a CSV file with access requests (source, destination, port)
+                        to get the top 3 policy suggestions for each line.
+                    </p>
+
+                    <form action="/batch_results" method="POST" enctype="multipart/form-data" class="stl-form">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold label-color">
+                                CSV File
+                            </label>
+                            <div class="stl-file-upload">
+                                <input class="form-control stl-input"
+                                       id="csvFile"
+                                       name="csv_file"
+                                       type="file"
+                                       accept=".csv"
+                                       required>
+                            </div>
+                            <div class="form-text stl-help-text">
+                                CSV format: <code>source,destination,port</code> (one request per line).
+                                Header row is optional. Port column is optional.
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary stl-btn-primary">
+                            Upload & Evaluate
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="stl-footer">
+        <span class="stl-footer-text">
+            SecureTrack-Lite · Least-privilege policy evaluation
+        </span>
+    </footer>
+
+</div>
+<script>
+(() => {
+    const addressOptions = {{ addresses|tojson }};
+    const serviceOptions = {{ services|tojson }};
+    const maxRenderedOptions = 80;
+    const selectors = [];
+
+    function initMultiSelect(config) {
+        const root = document.getElementById(config.rootId);
+        const search = document.getElementById(config.searchId);
+        const menu = document.getElementById(config.menuId);
+        const selected = document.getElementById(config.selectedId);
+        const value = document.getElementById(config.valueId);
+        const empty = document.getElementById(config.emptyId);
+        const selectedItems = new Map();
+        const options = config.items.map((item) => ({
+            label: item.name,
+            value: item.name,
+            meta: item.value || "",
+            search: `${item.name} ${item.value || ""}`.toLowerCase(),
+        }));
+        let renderFrame = null;
+
+        selectors.push({
+            root,
+            sync: syncSelected,
+        });
+
+        function rawSearchItems() {
+            return search.value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+
+        function syncSelected() {
+            const names = Array.from(selectedItems.values());
+            rawSearchItems().forEach((item) => {
+                if (!names.some((name) => name.value.toLowerCase() === item.toLowerCase())) {
+                    names.push({
+                        label: item,
+                        value: item,
+                    });
+                }
+            });
+
+            value.value = names.map((item) => item.value).join(",");
+            selected.innerHTML = "";
+
+            names.forEach((item) => {
+                const chip = document.createElement("button");
+                chip.type = "button";
+                chip.className = "stl-service-chip";
+                chip.textContent = item.label + " x";
+                chip.addEventListener("click", () => {
+                    selectedItems.delete(item.value.toLowerCase());
+                    renderOptions();
+                    syncSelected();
+                });
+                selected.appendChild(chip);
+            });
+        }
+
+        function createOption(item) {
+            const label = document.createElement("label");
+            label.className = "stl-service-option";
+
+            const check = document.createElement("input");
+            check.type = "checkbox";
+            check.value = item.value;
+            check.checked = selectedItems.has(item.value.toLowerCase());
+            check.addEventListener("change", () => {
+                if (check.checked) {
+                    selectedItems.set(item.value.toLowerCase(), {
+                        label: item.label,
+                        value: item.value,
+                    });
+                } else {
+                    selectedItems.delete(item.value.toLowerCase());
+                }
+                search.value = "";
+                renderOptions();
+                syncSelected();
+            });
+
+            const name = document.createElement("span");
+            name.className = "stl-service-name";
+            name.textContent = item.label;
+
+            label.appendChild(check);
+            label.appendChild(name);
+
+            if (item.meta) {
+                const meta = document.createElement("span");
+                meta.className = "stl-service-meta";
+                meta.textContent = item.meta;
+                label.appendChild(meta);
+            }
+
+            return label;
+        }
+
+        function matchingOptions() {
+            const query = search.value.trim().toLowerCase();
+            const matches = [];
+
+            for (const option of options) {
+                if (!query || option.search.includes(query)) {
+                    matches.push(option);
+                    if (matches.length >= maxRenderedOptions) {
+                        break;
+                    }
+                }
+            }
+
+            return matches;
+        }
+
+        function renderOptions() {
+            const matches = matchingOptions();
+            const fragment = document.createDocumentFragment();
+
+            matches.forEach((item) => fragment.appendChild(createOption(item)));
+            menu.replaceChildren(fragment, empty);
+            empty.hidden = matches.length > 0;
+        }
+
+        function scheduleRenderOptions() {
+            if (renderFrame) {
+                window.cancelAnimationFrame(renderFrame);
+            }
+            renderFrame = window.requestAnimationFrame(() => {
+                renderFrame = null;
+                renderOptions();
+            });
+        }
+
+        search.addEventListener("focus", () => {
+            root.classList.add("is-open");
+            renderOptions();
+        });
+        search.addEventListener("input", scheduleRenderOptions);
+
+        syncSelected();
+    }
+
+    document.addEventListener("click", (event) => {
+        selectors.forEach((selector) => {
+            if (!selector.root.contains(event.target)) {
+                selector.root.classList.remove("is-open");
+            }
+        });
+    });
+
+    document.querySelector(".stl-form").addEventListener("submit", () => {
+        selectors.forEach((selector) => selector.sync());
+    });
+
+    initMultiSelect({
+        rootId: "srcSelect",
+        searchId: "srcSearch",
+        menuId: "srcMenu",
+        selectedId: "srcSelected",
+        valueId: "srcValue",
+        emptyId: "srcEmpty",
+        items: addressOptions,
+    });
+
+    initMultiSelect({
+        rootId: "dstSelect",
+        searchId: "dstSearch",
+        menuId: "dstMenu",
+        selectedId: "dstSelected",
+        valueId: "dstValue",
+        emptyId: "dstEmpty",
+        items: addressOptions,
+    });
+
+    initMultiSelect({
+        rootId: "serviceSelect",
+        searchId: "serviceSearch",
+        menuId: "serviceMenu",
+        selectedId: "selectedServices",
+        valueId: "serviceValue",
+        emptyId: "serviceEmpty",
+        items: serviceOptions,
+    });
+})();
+</script>
+</body>
+</html>

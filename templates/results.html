@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Evaluation Results - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+</head>
+
+<body>
+<div class="container py-4 main-container">
+
+    <header class="stl-header mb-4">
+        <h1 class="stl-title">Evaluation Results</h1>
+        <p class="stl-subtitle">
+            Ranked existing policies based on least-privilege coverage
+        </p>
+    </header>
+
+    {% if best %}
+    <div class="card stl-card mb-4">
+        <div class="card-header stl-card-header">
+            <h2 class="stl-section-title mb-0">Best Extension Candidate</h2>
+        </div>
+        <div class="card-body">
+            <div class="stl-result-box stl-result-good">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-6">
+                        <p class="mb-1">
+                            <span class="stl-label">Policy ID:</span>
+                            <span class="stl-value">{{ best.policyid }}</span>
+                        </p>
+                        <p class="mb-1">
+                            <span class="stl-label">Name:</span>
+                            <span class="stl-value">{{ best.name }}</span>
+                        </p>
+                        <p class="mb-1">
+                            <span class="stl-label">Src Matches:</span>
+                            <span class="stl-value">{{ best.src_matches }}</span>
+                        </p>
+                        <p class="mb-0">
+                            <span class="stl-label">Dst Matches:</span>
+                            <span class="stl-value">{{ best.dst_matches }}</span>
+                        </p>
+                        <p class="mb-0">
+                            <span class="stl-label">Action:</span>
+                            <span class="stl-value">{{ best.candidate_action }}</span>
+                        </p>
+                        <p class="mb-0">
+                            <span class="stl-label">Route:</span>
+                            <span class="stl-value">
+                                {{ best.route_srcintf or "-" }} -> {{ best.route_dstintf or "-" }}
+                            </span>
+                        </p>
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <div class="stl-score-block">
+                            <span class="stl-score-label">Score</span>
+                            <span class="stl-score-badge stl-score-high">
+                                {{ best.score }}
+                            </span>
+                        </div>
+                        <p class="stl-score-note mb-0">
+                            Higher score = better existing policy to extend.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        No matching policies were found.
+    </div>
+    {% endif %}
+
+    {% if results %}
+    <div class="card stl-card">
+        <div class="card-header stl-card-header">
+            <h2 class="stl-section-title mb-0">All Extension Candidates</h2>
+        </div>
+        <div class="card-body">
+
+            <div class="table-responsive">
+                <table class="table table-hover stl-table">
+                    <thead>
+                        <tr>
+                            <th>Policy ID</th>
+                            <th>Name</th>
+                            <th class="text-center">Score</th>
+                            <th class="text-center">Src Matches</th>
+                            <th class="text-center">Dst Matches</th>
+                            <th class="text-center">Srv Matches</th>
+                            <th>Candidate Action</th>
+                            <th>Policy Interfaces</th>
+                            <th>Route Interfaces</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for r in results %}
+                        <tr class="{% if loop.first %}stl-table-best-row{% endif %}">
+                            <td>{{ r.policyid }}</td>
+                            <td>{{ r.name }}</td>
+                            <td class="text-center">
+                                <span class="stl-score-badge
+                                    {% if r.score >= 80 %}
+                                        stl-score-high
+                                    {% elif r.score >= 50 %}
+                                        stl-score-medium
+                                    {% else %}
+                                        stl-score-low
+                                    {% endif %}
+                                ">
+                                    {{ r.score }}
+                                </span>
+                            </td>
+                            <td class="text-center">{{ r.src_matches }}</td>
+                            <td class="text-center">{{ r.dst_matches }}</td>
+                            <td class="text-center">{{ r.srv_matches }}</td>
+                            <td>{{ r.candidate_action }}</td>
+                            <td>{{ r.srcintf|join(", ") }} -> {{ r.dstintf|join(", ") }}</td>
+                            <td>{{ r.route_srcintf or "-" }} -> {{ r.route_dstintf or "-" }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+    {% endif %}
+
+    <footer class="stl-footer mt-4">
+        <a href="/" class="btn btn-secondary stl-btn-secondary">
+            New Evaluation
+        </a>
+    </footer>
+
+</div>
+</body>
+</html>

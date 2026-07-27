@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Profile - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <style>
+        .profile-container {
+            max-width: 560px;
+        }
+        .profile-info {
+            margin-bottom: 1.5rem;
+        }
+        .profile-info dt {
+            color: var(--stl-muted);
+            font-size: 0.82rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .profile-info dd {
+            color: #f8fafc;
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .profile-role-badge {
+            display: inline-block;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 0.25rem 0.7rem;
+            text-transform: uppercase;
+        }
+        .profile-role-admin {
+            background: rgba(74, 222, 128, 0.18);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+        .profile-role-viewer {
+            background: rgba(96, 165, 250, 0.18);
+            color: #60a5fa;
+            border: 1px solid rgba(96, 165, 250, 0.3);
+        }
+        .profile-field {
+            margin-bottom: 1.25rem;
+        }
+        .profile-field label {
+            color: #000000;
+            font-size: 0.88rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+        .profile-field input {
+            width: 100%;
+            min-height: 50px;
+            border: 1px solid var(--stl-border);
+            border-radius: 14px;
+            background-color: rgba(15, 23, 42, 0.88);
+            color: #f8fafc;
+            font-size: 0.95rem;
+            padding: 0.75rem 1rem;
+            transition: border-color 140ms ease, box-shadow 140ms ease;
+        }
+        .profile-field input:focus {
+            border-color: var(--stl-primary);
+            background-color: rgba(15, 23, 42, 1);
+            box-shadow: 0 0 0 0.18rem rgba(96, 165, 250, 0.25);
+            outline: none;
+        }
+        .profile-submit {
+            width: 100%;
+            min-height: 50px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #B91C1C 0%, #991b1b 100%);
+            box-shadow: 0 16px 36px rgba(185, 28, 28, 0.26);
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            padding: 0.7rem 1.75rem;
+            cursor: pointer;
+            transition: background 140ms ease, box-shadow 140ms ease;
+        }
+        .profile-submit:hover {
+            background: linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%);
+            box-shadow: 0 18px 40px rgba(185, 28, 28, 0.32);
+        }
+        .profile-flash {
+            border-radius: 12px;
+            font-size: 0.88rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.25rem;
+        }
+        .profile-flash-success {
+            background: rgba(74, 222, 128, 0.12);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            color: #86efac;
+        }
+        .profile-flash-error {
+            background: rgba(248, 113, 113, 0.12);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+            color: #fca5a5;
+        }
+        .profile-flash-info {
+            background: rgba(96, 165, 250, 0.12);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            color: #93c5fd;
+        }
+    </style>
+</head>
+<body>
+<div class="container py-4 main-container profile-container">
+
+    <header class="stl-header mb-4">
+        <h1 class="stl-title">My Profile</h1>
+        <p class="stl-subtitle">Manage your account settings</p>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="profile-flash profile-flash-{{ category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="card stl-card mb-4">
+        <div class="card-header stl-card-header">
+            <h2 class="stl-section-title mb-0">Account Information</h2>
+        </div>
+        <div class="card-body">
+            <dl class="profile-info">
+                <dt>Username</dt>
+                <dd>{{ user.username }}</dd>
+                <dt>Role</dt>
+                <dd>
+                    <span class="profile-role-badge
+                        {% if user.role == 'admin' %}
+                            profile-role-admin
+                        {% else %}
+                            profile-role-viewer
+                        {% endif %}
+                    ">{{ user.role }}</span>
+                </dd>
+                <dt>User ID</dt>
+                <dd style="font-size:0.85rem; color: var(--stl-muted); font-family: monospace;">{{ user.id }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card stl-card mb-4">
+        <div class="card-header stl-card-header">
+            <h2 class="stl-section-title mb-0">Change Password</h2>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('change_password') }}">
+                {{ form.hidden_tag() }}
+
+                <div class="profile-field">
+                    {{ form.current_password.label }}
+                    {{ form.current_password() }}
+                    {% if form.current_password.errors %}
+                        {% for error in form.current_password.errors %}
+                            <small style="color: #f87171; font-size: 0.8rem;">{{ error }}</small>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+
+                <div class="profile-field">
+                    {{ form.new_password.label }}
+                    {{ form.new_password() }}
+                    {% if form.new_password.errors %}
+                        {% for error in form.new_password.errors %}
+                            <small style="color: #f87171; font-size: 0.8rem;">{{ error }}</small>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+
+                {{ form.submit(class="profile-submit") }}
+            </form>
+        </div>
+    </div>
+
+    <footer class="stl-footer mt-4">
+        <a href="/" class="btn btn-secondary stl-btn-secondary">
+            Back to Home
+        </a>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger stl-btn-secondary">
+            Sign Out
+        </a>
+    </footer>
+
+</div>
+</body>
+</html>

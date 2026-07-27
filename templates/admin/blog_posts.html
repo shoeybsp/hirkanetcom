@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blog Posts - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+</head>
+<body>
+<div class="container py-4 main-container">
+
+    <header class="stl-header mb-4">
+        <div class="stl-brand">
+            <div>
+                <h1 class="stl-title">Blog Posts</h1>
+                <p class="stl-subtitle">Write, edit, and publish posts for the public Hirkanet blog</p>
+            </div>
+        </div>
+        <div class="stl-user-nav">
+            <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
+            <a href="{{ url_for('admin.blog_category_list') }}" class="stl-nav-link">Blog Categories</a>
+            <a href="{{ url_for('admin.profile') }}" class="stl-nav-link">Profile</a>
+            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <a href="{{ url_for('admin.blog_post_create') }}" class="btn btn-primary stl-btn-primary">+ Create Post</a>
+        <div class="btn-group" role="group">
+            <a href="{{ url_for('admin.blog_post_list') }}"
+               class="btn btn-sm {{ 'btn-primary' if not status_filter else 'btn-outline-secondary' }}">All</a>
+            <a href="{{ url_for('admin.blog_post_list', status='published') }}"
+               class="btn btn-sm {{ 'btn-primary' if status_filter == 'published' else 'btn-outline-secondary' }}">Published</a>
+            <a href="{{ url_for('admin.blog_post_list', status='draft') }}"
+               class="btn btn-sm {{ 'btn-primary' if status_filter == 'draft' else 'btn-outline-secondary' }}">Drafts</a>
+        </div>
+    </div>
+
+    {% if posts %}
+    <div class="card stl-card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for post in posts %}
+                    <tr>
+                        <td>
+                            <strong>{{ post.title }}</strong>
+                            {% if post.status == 'published' %}
+                            <br><a href="{{ url_for('main.blog_detail', slug=post.slug) }}" target="_blank" class="stl-nav-link" style="font-size:0.78rem;">View live &nearr;</a>
+                            {% endif %}
+                        </td>
+                        <td>{{ post.category.name if post.category else '—' }}</td>
+                        <td>
+                            {% if post.status == 'published' %}
+                            <span class="badge bg-success">Published</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ post.updated_at.strftime('%Y-%m-%d %H:%M') if post.updated_at else '' }}</td>
+                        <td class="text-nowrap">
+                            <a href="{{ url_for('admin.blog_post_edit', post_id=post.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                            <form action="{{ url_for('admin.blog_post_toggle_status', post_id=post.id) }}" method="POST" style="display:inline;">
+                                {% if post.status == 'published' %}
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Unpublish</button>
+                                {% else %}
+                                <button type="submit" class="btn btn-sm btn-outline-success">Publish</button>
+                                {% endif %}
+                            </form>
+                            <form action="{{ url_for('admin.blog_post_delete', post_id=post.id) }}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this post? This cannot be undone.')">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="card stl-card text-center">
+        <div class="card-body py-5 stl-empty-state">
+            <h3 class="mb-3" style="color:#f8fbff;">
+                {% if status_filter %}No {{ status_filter }} posts{% else %}No posts yet{% endif %}
+            </h3>
+            <p style="color: var(--stl-muted); max-width: 480px; margin: 0 auto 1.25rem;">
+                {% if status_filter %}
+                Try a different filter, or create a new post.
+                {% else %}
+                Create your first post to start filling in the public blog.
+                {% endif %}
+            </p>
+            <a href="{{ url_for('admin.blog_post_create') }}" class="btn btn-primary stl-btn-primary">+ Create Post</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <footer class="stl-footer mt-4">
+        <span class="stl-footer-text">SecureTrack-Lite &middot; Admin Panel</span>
+    </footer>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

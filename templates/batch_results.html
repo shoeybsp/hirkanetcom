@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Batch Results - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+</head>
+
+<body>
+<div class="container py-4 main-container">
+
+    <header class="stl-header mb-4">
+        <h1 class="stl-title">Batch CSV Results</h1>
+        <p class="stl-subtitle">
+            Top 3 policy suggestions per access request
+        </p>
+    </header>
+
+    {% if results %}
+    <div class="card stl-card mb-4">
+        <div class="card-header stl-card-header">
+            <h2 class="stl-section-title mb-0">
+                {{ results|length }} Request{{ 's' if results|length != 1 else '' }} Evaluated
+            </h2>
+        </div>
+        <div class="card-body p-0">
+            {% for item in results %}
+            <div class="stl-batch-request">
+                <div class="stl-batch-request-header">
+                    <div class="stl-batch-line-info">
+                        <span class="stl-batch-line-badge">Line {{ item.line }}</span>
+                        <span class="stl-batch-request-detail">
+                            <strong>Source:</strong> {{ item.source }}
+                        </span>
+                        <span class="stl-batch-request-detail">
+                            <strong>Destination:</strong> {{ item.destination }}
+                        </span>
+                        {% if item.port %}
+                        <span class="stl-batch-request-detail">
+                            <strong>Port:</strong> {{ item.port }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if item.suggestions %}
+                <div class="stl-batch-suggestions">
+                    <table class="table table-hover stl-table stl-batch-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Policy ID</th>
+                                <th>Name</th>
+                                <th class="text-center">Score</th>
+                                <th class="text-center">Src Matches</th>
+                                <th class="text-center">Dst Matches</th>
+                                <th class="text-center">Srv Matches</th>
+                                <th>Candidate Action</th>
+                                <th>Policy Interfaces</th>
+                                <th>Route Interfaces</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for r in item.suggestions %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ r.policyid }}</td>
+                                <td>{{ r.name }}</td>
+                                <td class="text-center">
+                                    <span class="stl-score-badge
+                                        {% if r.score >= 80 %}
+                                            stl-score-high
+                                        {% elif r.score >= 50 %}
+                                            stl-score-medium
+                                        {% else %}
+                                            stl-score-low
+                                        {% endif %}
+                                    ">
+                                        {{ r.score }}
+                                    </span>
+                                </td>
+                                <td class="text-center">{{ r.src_matches }}</td>
+                                <td class="text-center">{{ r.dst_matches }}</td>
+                                <td class="text-center">{{ r.srv_matches }}</td>
+                                <td>{{ r.candidate_action }}</td>
+                                <td>{{ r.srcintf|join(", ") }} -> {{ r.dstintf|join(", ") }}</td>
+                                <td>{{ r.route_srcintf or "-" }} -> {{ r.route_dstintf or "-" }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="stl-batch-no-results">
+                    <em>No matching policies found.</em>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        No valid access request lines were found in the uploaded CSV.
+    </div>
+    {% endif %}
+
+    <footer class="stl-footer mt-4">
+        <a href="/" class="btn btn-secondary stl-btn-secondary">
+            New Evaluation
+        </a>
+    </footer>
+
+</div>
+</body>
+</html>

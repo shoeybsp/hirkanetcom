@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Hirkanet — Application Delivery. Cyber Security. Assured.{% endblock %}</title>
+<meta name="description" content="{% block meta_description %}Hirkanet delivers application delivery and cyber security services, with continuously evaluated, least-privilege access policies.{% endblock %}">
+<link rel="icon" href="{{ url_for('static', filename='img/hirkanet-icon.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='public.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body class="hk-body">
+
+<nav class="hk-nav">
+  <div class="hk-wrap" style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+    <a href="{{ url_for('main.home') }}" class="hk-nav-brand">
+      <img src="{{ url_for('static', filename='img/hirkanet-icon.png') }}" alt="Hirkanet">
+      <span>HIRKANET</span>
+    </a>
+    <div class="hk-nav-links">
+      <a href="{{ url_for('main.home') }}#pillars">Solutions</a>
+      <a href="{{ url_for('main.home') }}#product">Platform</a>
+      <a href="{{ url_for('main.blog_list') }}"{% if request.endpoint and request.endpoint.startswith('main.blog') %} class="is-active"{% endif %}>Blog</a>
+      <a href="{{ url_for('main.home') }}#contact">Contact</a>
+    </div>
+    <div class="hk-nav-cta">
+      {% if current_user.is_authenticated %}
+      <a href="{{ url_for('admin.dashboard') if current_user.role == 'admin' else url_for('client.dashboard') }}" class="hk-btn hk-btn-ghost">Dashboard</a>
+      {% else %}
+      <a href="{{ url_for('login') }}" class="hk-btn hk-btn-ghost">Client Login</a>
+      {% endif %}
+      <a href="{{ url_for('main.home') }}#contact" class="hk-btn hk-btn-primary">Talk to Us</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+<footer class="hk-footer">
+  <div class="hk-wrap">
+    <div class="hk-footer-top">
+      <div>
+        <div class="hk-footer-brand">
+          <img src="{{ url_for('static', filename='img/hirkanet-icon.png') }}" alt="Hirkanet">
+          <span>HIRKANET</span>
+        </div>
+        <p class="hk-footer-tagline">Application delivery. Cyber security. Assured.</p>
+      </div>
+      <div class="hk-footer-cols">
+        <div class="hk-footer-col">
+          <h5>Company</h5>
+          <a href="{{ url_for('main.home') }}">Home</a>
+          <a href="{{ url_for('main.blog_list') }}">Blog</a>
+          <a href="{{ url_for('login') }}">Client Login</a>
+        </div>
+        <div class="hk-footer-col">
+          <h5>Solutions</h5>
+          <a href="{{ url_for('main.home') }}#pillars">Application Delivery</a>
+          <a href="{{ url_for('main.home') }}#pillars">Cyber Security</a>
+          <a href="{{ url_for('main.home') }}#pillars">Assurance</a>
+        </div>
+      </div>
+    </div>
+    <div class="hk-footer-bottom">
+      <span>&copy; {{ current_year }} Hirkanet. All rights reserved.</span>
+      <span>hello@hirkanet.com</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const els = document.querySelectorAll('.hk-reveal');
+  if (!els.length) return;
+  if (!('IntersectionObserver' in window)) {
+    els.forEach((el) => el.classList.add('is-visible'));
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.14 });
+  els.forEach((el) => io.observe(el));
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

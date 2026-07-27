@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Evaluation Results - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+</head>
+<body>
+<div class="container py-4 main-container">
+    <header class="stl-header mb-4">
+        <div class="stl-brand">
+            <div>
+                <h1 class="stl-title">Policy Evaluation Results</h1>
+            </div>
+        </div>
+        <div class="stl-user-nav">
+            <a href="{{ url_for('client.dashboard') }}" class="stl-nav-link">Dashboard</a>
+            <a href="{{ url_for('client.policy_evaluation') }}" class="stl-nav-link">New Evaluation</a>
+            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+        </div>
+    </header>
+
+    <div class="card stl-card mb-4">
+        <div class="card-body py-3">
+            <span class="stl-label">Requested:</span>
+            <span class="stl-value">
+                src: {{ query_src|join(", ") if query_src else "-" }}
+                &nbsp;&rarr;&nbsp;
+                dst: {{ query_dst|join(", ") if query_dst else "-" }}
+                &nbsp;&middot;&nbsp;
+                service: {{ query_service|join(", ") if query_service else "any" }}
+            </span>
+        </div>
+    </div>
+
+    {% if best %}
+    <div class="alert alert-success">
+        <strong>Best match:</strong>
+        Policy {{ best.policyid }}{% if best.name %} &ndash; {{ best.name }}{% endif %}
+        (score: {{ best.score }}) &mdash; {{ best.candidate_action }}
+    </div>
+    {% endif %}
+
+    {% if results %}
+    <div class="card stl-card">
+        <div class="card-header stl-card-header">
+            <h2 class="stl-section-title mb-0">Matching Policies ({{ results|length }})</h2>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Policy ID</th>
+                            <th>Name</th>
+                            <th class="text-center">Score</th>
+                            <th class="text-center">Src</th>
+                            <th class="text-center">Dst</th>
+                            <th class="text-center">Svc</th>
+                            <th>Action Needed</th>
+                            <th>Policy Interfaces</th>
+                            <th>Route Interfaces</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in results %}
+                        <tr class="{{ 'table-success' if loop.first and best and r.policyid == best.policyid else '' }}">
+                            <td>{{ loop.index }}</td>
+                            <td>{{ r.policyid }}</td>
+                            <td>{{ r.name or '' }}</td>
+                            <td class="text-center">
+                                <span class="badge {% if r.score >= 80 %}bg-success{% elif r.score >= 50 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ r.score }}
+                                </span>
+                            </td>
+                            <td class="text-center">{{ r.src_matches }}</td>
+                            <td class="text-center">{{ r.dst_matches }}</td>
+                            <td class="text-center">{{ r.srv_matches }}</td>
+                            <td>
+                                <span class="badge {% if r.candidate_action == 'already covered' %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ r.candidate_action }}
+                                </span>
+                            </td>
+                            <td>{{ r.srcintf|join(", ") }} &rarr; {{ r.dstintf|join(", ") }}</td>
+                            <td>{{ r.route_srcintf or "-" }} &rarr; {{ r.route_dstintf or "-" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card stl-card">
+        <div class="card-body text-center py-5">
+            <h3 class="text-muted">No matching policies found.</h3>
+            <p class="text-muted">Try different source, destination, or service values.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <footer class="stl-footer mt-4">
+        <span class="stl-footer-text">SecureTrack-Lite &middot; Policy Evaluation</span>
+    </footer>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

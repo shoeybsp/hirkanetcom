@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign In - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <style>
+        label.form-label,
+        label.form-label.fw-semibold {
+            color: #000000 !important;
+        }
+        .auth-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 440px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            box-shadow: 0 24px 60px rgba(2, 8, 23, 0.38);
+        }
+        .auth-card .card-body {
+            padding: 2.4rem 2rem 2rem;
+        }
+        .auth-logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 1.8rem;
+        }
+        .auth-logo img {
+            width: auto;
+            height: 46px;
+            object-fit: contain;
+            margin-bottom: 0.9rem;
+        }
+        .auth-logo h1 {
+            color: #f8fbff;
+            font-size: 1.45rem;
+            font-weight: 800;
+            margin: 0;
+        }
+        .auth-logo p {
+            color: var(--stl-muted);
+            font-size: 0.92rem;
+            margin: 0.3rem 0 0;
+        }
+        .auth-field {
+            margin-bottom: 1.1rem;
+        }
+        .auth-field label {
+            color: #000000 !important;
+            font-size: 0.88rem;
+            font-weight: 600;
+            margin-bottom: 0.45rem;
+        }
+        .auth-field input {
+            width: 100%;
+            min-height: 50px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 14px;
+            background-color: rgba(8, 15, 29, 0.95) !important;
+            color: #f8fbff !important;
+            font-size: 0.95rem;
+            padding: 0.8rem 1rem;
+            transition: border-color 140ms ease, box-shadow 140ms ease;
+        }
+        .auth-field input:-webkit-autofill,
+        .auth-field input:-webkit-autofill:hover,
+        .auth-field input:-webkit-autofill:focus {
+            -webkit-text-fill-color: #f8fbff;
+            -webkit-box-shadow: 0 0 0 1000px rgba(8, 15, 29, 0.95) inset;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+        .auth-field input:focus {
+            border-color: var(--stl-primary);
+            background-color: rgba(8, 15, 29, 1);
+            box-shadow: 0 0 0 0.2rem rgba(79, 140, 255, 0.22);
+            outline: none;
+        }
+        .auth-field input::placeholder {
+            color: #8092ac;
+        }
+        .auth-error {
+            background: rgba(239, 94, 94, 0.12);
+            border: 1px solid rgba(239, 94, 94, 0.25);
+            border-radius: 12px;
+            color: #ffc2c2;
+            font-size: 0.88rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+        }
+        .auth-submit {
+            width: 100%;
+            min-height: 50px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #2d79ff 0%, #1d4ed8 100%);
+            box-shadow: 0 16px 36px rgba(37, 99, 235, 0.24);
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            padding: 0.7rem 1.75rem;
+            cursor: pointer;
+            transition: transform 140ms ease, box-shadow 140ms ease;
+        }
+        .auth-submit:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 18px 40px rgba(37, 99, 235, 0.3);
+        }
+        .auth-footer {
+            text-align: center;
+            margin-top: 1.25rem;
+            color: var(--stl-muted);
+            font-size: 0.84rem;
+        }
+        .auth-flash {
+	        background: rgba(79, 255, 202, 0);
+            border: 1px solid rgba(79, 140, 255, 0.24);
+            border-radius: 12px;
+            color: #0e3161;
+            font-size: 0.88rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+}
+        .auth-csrf-note {
+            color: #64748b;
+            font-size: 0.75rem;
+            text-align: center;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+<div class="auth-container">
+    <div class="card stl-card auth-card">
+        <div class="card-body">
+            <div class="auth-logo">
+                <a href="{{ url_for('main.home') }}">
+                    <img src="{{ url_for('static', filename='img/hirkanet-icon.png') }}"
+                         alt="Hirkanet logo"
+                         onerror="this.style.display='none'">
+                </a>
+                <h1>SecureTrack-Lite</h1>
+                <p>Policy Evaluation Portal</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="{% if category == 'error' %}auth-error{% else %}auth-flash{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('login') }}">
+                {{ form.hidden_tag() }}
+
+                <div class="auth-field">
+                    {{ form.username.label }}
+                    {{ form.username() }}
+                    {% if form.username.errors %}
+                        {% for error in form.username.errors %}
+                            <small style="color: #f87171; font-size: 0.8rem;">{{ error }}</small>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+
+                <div class="auth-field">
+                    {{ form.password.label }}
+                    {{ form.password() }}
+                    {% if form.password.errors %}
+                        {% for error in form.password.errors %}
+                            <small style="color: #f87171; font-size: 0.8rem;">{{ error }}</small>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+
+                {{ form.submit(class="auth-submit") }}
+            </form>
+
+            <div class="auth-footer">
+                <span>Default credentials: <strong>admin</strong> / <strong>admin</strong></span>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
