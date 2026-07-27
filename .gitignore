@@ -15,7 +15,7 @@ dist/
 .venv/
 venv/
 env/
-
+nginx/
 # Local tool and runtime state
 .codex
 .codex/
