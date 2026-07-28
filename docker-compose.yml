@@ -1,38 +1,336 @@
+name: hirkanetcom
+
+x-docker-logging: &docker_logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
-    image: postgres:15-alpine
-    container_name: fortigate-db
+    image: postgres:16-alpine
+    container_name: hirkanet-db
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: fortigate_policy
-      POSTGRES_USER: fortigate_user
-      POSTGRES_PASSWORD: fortigate_pass
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-Europe/Riga}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fortigate_user -d fortigate_policy"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
+      start_period: 10s
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
 
   app:
-    build: .
-    container_name: fortigate-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hirkanet-app
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://fortigate_user:fortigate_pass@db:5432/fortigate_policy
-      SECRET_KEY: change-this-to-a-secure-random-key
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      APP_ENV: ${APP_ENV:-production}
+      SERVICE_NAME: ${SERVICE_NAME:-hirkanet}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      TZ: ${TZ:-Europe/Riga}
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
-    command: gunicorn --bind 0.0.0.0:5000 api.app:app
+    command:
+      - gunicorn
+      - --config
+      - gunicorn.conf.py
+      - api.app:app
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:5000/readyz', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
+
+  es-keystore-setup:
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
+    user: "1000:0"
+    restart: "no"
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+    volumes:
+      - es_config:/usr/share/elasticsearch/config
+    command:
+      - /bin/bash
+      - -c
+      - |
+          set -euo pipefail
+
+          if [ -z "$${ELASTIC_PASSWORD:-}" ]; then
+            echo "ERROR: ELASTIC_PASSWORD is empty"
+            exit 1
+          fi
+
+          if [ ! -f /usr/share/elasticsearch/config/elasticsearch.keystore ]; then
+            bin/elasticsearch-keystore create
+          fi
+
+          printf '%s' "$${ELASTIC_PASSWORD}" | \
+            bin/elasticsearch-keystore add --stdin -f bootstrap.password
+
+          echo "Elasticsearch bootstrap password written to keystore."
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
+
+  elasticsearch:
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
+    container_name: hirkanet-elasticsearch
+    restart: unless-stopped
+    depends_on:
+      es-keystore-setup:
+        condition: service_completed_successfully
+    environment:
+      node.name: elasticsearch
+      cluster.name: hirkanet-cluster
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      xpack.security.autoconfiguration.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+      xpack.ml.enabled: "false"
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+      TZ: ${TZ:-Europe/Riga}
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - es_config:/usr/share/elasticsearch/config
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --silent --fail
+          --user "elastic:$${ELASTIC_PASSWORD}"
+          http://127.0.0.1:9200/_security/_authenticate
+          >/dev/null
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 90s
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
+
+  elastic-init:
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
+    restart: "no"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}
+      KIBANA_PASSWORD: ${KIBANA_PASSWORD}
+      LOGSTASH_PASSWORD: ${LOGSTASH_PASSWORD}
+    command:
+      - /bin/bash
+      - -c
+      - |
+          set -u
+
+          for variable in ELASTIC_PASSWORD KIBANA_PASSWORD LOGSTASH_PASSWORD; do
+            value="$${!variable}"
+            if [ -z "$${value}" ]; then
+              echo "ERROR: $${variable} is empty"
+              exit 1
+            fi
+          done
+
+          echo "Verifying authenticated Elasticsearch API..."
+          http_code="$$(curl --silent \
+            --output /tmp/elastic-auth-response.json \
+            --write-out '%{http_code}' \
+            --user "elastic:$${ELASTIC_PASSWORD}" \
+            http://elasticsearch:9200/_security/_authenticate || true)"
+
+          if [ "$${http_code}" != "200" ]; then
+            echo "ERROR: Elasticsearch authentication check returned HTTP $${http_code:-000}."
+            cat /tmp/elastic-auth-response.json 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Elasticsearch authentication succeeded."
+
+          echo "Setting kibana_system password..."
+          curl --fail --silent --show-error \
+            --user "elastic:$${ELASTIC_PASSWORD}" \
+            --request POST \
+            --header "Content-Type: application/json" \
+            http://elasticsearch:9200/_security/user/kibana_system/_password \
+            --data "{\"password\":\"$${KIBANA_PASSWORD}\"}"
+
+          echo
+          echo "Creating/updating Logstash writer role..."
+          curl --fail --silent --show-error \
+            --user "elastic:$${ELASTIC_PASSWORD}" \
+            --request PUT \
+            --header "Content-Type: application/json" \
+            http://elasticsearch:9200/_security/role/logstash_writer \
+            --data '{
+              "cluster": ["monitor", "manage_index_templates"],
+              "indices": [
+                {
+                  "names": ["hirkanet-logs-*", "hirkanet-dead-letter-*"],
+                  "privileges": ["auto_configure", "create", "create_doc", "create_index", "manage", "write"]
+                }
+              ]
+            }'
+
+          echo
+          echo "Creating/updating Logstash internal user..."
+          curl --fail --silent --show-error \
+            --user "elastic:$${ELASTIC_PASSWORD}" \
+            --request POST \
+            --header "Content-Type: application/json" \
+            http://elasticsearch:9200/_security/user/logstash_internal \
+            --data "{
+              \"password\": \"$${LOGSTASH_PASSWORD}\",
+              \"roles\": [\"logstash_writer\"],
+              \"full_name\": \"Hirkanet Logstash Writer\"
+            }"
+
+          echo
+          echo "Elastic initialization completed successfully."
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
+
+  logstash:
+    image: logstash:${STACK_VERSION:-9.3.8}
+    container_name: hirkanet-logstash
+    restart: unless-stopped
+    depends_on:
+      elastic-init:
+        condition: service_completed_successfully
+    environment:
+      LOGSTASH_PASSWORD: ${LOGSTASH_PASSWORD}
+      LS_JAVA_OPTS: ${LS_JAVA_OPTS:--Xms256m -Xmx256m}
+      XPACK_MONITORING_ENABLED: "false"
+      TZ: ${TZ:-Europe/Riga}
+    volumes:
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - logstash_data:/usr/share/logstash/data
+    expose:
+      - "5044"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -c '</dev/tcp/127.0.0.1/5044'
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
+
+  kibana:
+    image: kibana:${STACK_VERSION:-9.3.8}
+    container_name: hirkanet-kibana
+    restart: unless-stopped
+    depends_on:
+      elastic-init:
+        condition: service_completed_successfully
+    environment:
+      SERVER_NAME: kibana
+      SERVER_HOST: 0.0.0.0
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: ${KIBANA_PASSWORD}
+      XPACK_SECURITY_ENCRYPTIONKEY: ${KIBANA_SECURITY_ENCRYPTION_KEY}
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: ${KIBANA_SAVED_OBJECTS_ENCRYPTION_KEY}
+      XPACK_REPORTING_ENCRYPTIONKEY: ${KIBANA_REPORTING_ENCRYPTION_KEY}
+      TELEMETRY_OPTIN: "false"
+      TELEMETRY_ALLOWCHANGINGOPTINSTATUS: "false"
+      TZ: ${TZ:-Europe/Riga}
+    ports:
+      - "127.0.0.1:5601:5601"
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --silent --fail http://127.0.0.1:5601/api/status >/dev/null
+      interval: 15s
+      timeout: 10s
+      retries: 60
+      start_period: 90s
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
+
+  filebeat:
+    image: elastic/filebeat:${STACK_VERSION:-9.3.8}
+    container_name: hirkanet-filebeat
+    restart: unless-stopped
+    user: root
+    depends_on:
+      app:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat_data:/usr/share/filebeat/data
+    command:
+      - filebeat
+      - -e
+      - --strict.perms=false
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - filebeat test output -e >/dev/null 2>&1
+      interval: 20s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    networks:
+      - hirkanet-network
+    logging: *docker_logging
 
 volumes:
   postgres_data:
+  es_config:
+  es_data:
+  kibana_data:
+  logstash_data:
+  filebeat_data:
+
+networks:
+  hirkanet-network:
+    driver: bridge

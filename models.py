@@ -1,5 +1,5 @@
+import logging
 import os
-import sys
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -7,6 +7,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 
 db = SQLAlchemy()
+logger = logging.getLogger(__name__)
 
 
 class User(UserMixin, db.Model):
@@ -14,8 +15,8 @@ class User(UserMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(100), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(128), nullable=False)
-    salt = db.Column(db.String(64), nullable=False)
+    password_hash = db.Column(db.String(512), nullable=False)
+    salt = db.Column(db.String(64), nullable=False, default="")
     role = db.Column(db.String(20), nullable=False, default="client")  # "admin" or "client"
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -194,48 +195,35 @@ def init_db(app):
         except OperationalError as exc:
             if attempt == max_attempts:
                 raise
-            print(
-                f"Database not ready yet (attempt {attempt}/{max_attempts}): {exc}. "
-                f"Retrying in {delay_seconds}s...",
-                file=sys.stderr,
+            logger.warning(
+                "Database not ready yet (attempt %d/%d): %s. Retrying in %ds...",
+                attempt,
+                max_attempts,
+                exc,
+                delay_seconds,
             )
             time.sleep(delay_seconds)
 
 
 def _seed_defaults():
-    """Seed default admin user and default services if they don't exist."""
-    import hashlib
-    import os as _os
-
-    # Seed default admin
-    admin = User.query.filter_by(username="admin").first()
-    if admin is None:
-        salt = _os.urandom(32).hex()
-        pw_hash = hashlib.sha256((salt + "admin").encode("utf-8")).hexdigest()
-        admin = User(
-            username="admin",
-            password_hash=pw_hash,
-            salt=salt,
-            role="admin",
-        )
+    """Seed non-secret defaults and optionally bootstrap an admin from environment."""
+    from security import hash_password
+    admin = User.query.filter_by(username=os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip().lower()).first() if os.getenv("BOOTSTRAP_ADMIN_USERNAME") else None
+    bootstrap_user = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip().lower()
+    bootstrap_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
+    if bootstrap_user and bootstrap_password and admin is None:
+        if len(bootstrap_password) < 12:
+            raise RuntimeError("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters")
+        admin = User(username=bootstrap_user, password_hash=hash_password(bootstrap_password), salt="", role="admin")
         db.session.add(admin)
-
-    # Seed default services
-    default_services = [
-        {
-            "name": "Policy Evaluation",
-            "description": "Evaluate FortiGate firewall policies for new access requests",
-            "service_type": "policy_evaluation",
-        },
-    ]
+        logger.info("Bootstrap admin created", extra={"event_type":"audit_user_created","target_username":bootstrap_user})
+    default_services=[{"name":"Policy Evaluation","description":"Evaluate FortiGate firewall policies for new access requests","service_type":"policy_evaluation"}]
     for svc_data in default_services:
-        existing = Service.query.filter_by(service_type=svc_data["service_type"]).first()
-        if existing is None:
-            svc = Service(**svc_data)
-            db.session.add(svc)
-
+        if Service.query.filter_by(service_type=svc_data["service_type"]).first() is None:
+            db.session.add(Service(**svc_data))
     db.session.commit()
-    _seed_blog_defaults(admin)
+    if admin:
+        _seed_blog_defaults(admin)
 
 
 def _seed_blog_defaults(admin_user):

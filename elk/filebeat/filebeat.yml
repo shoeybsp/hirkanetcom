@@ -1,0 +1,28 @@
+filebeat.inputs:
+  - type: filestream
+    id: hirkanet-docker-logs
+    paths: ["/var/lib/docker/containers/*/*.log"]
+    parsers:
+      - container:
+          stream: all
+          format: docker
+processors:
+  - add_docker_metadata:
+      host: unix:///var/run/docker.sock
+  - drop_event:
+      when:
+        not:
+          or:
+            - equals:
+                container.name: fortigate-app
+            - equals:
+                container.name: fortigate-db
+output.logstash:
+  hosts: ["logstash:5044"]
+  ssl.enabled: false
+queue.mem:
+  events: 4096
+  flush.min_events: 512
+logging.level: info
+logging.to_files: false
+logging.to_stderr: true

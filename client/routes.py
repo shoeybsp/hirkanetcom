@@ -1,6 +1,7 @@
 import csv
 import io
-import sys
+import logging
+import time
 from flask import (
     Blueprint,
     render_template,
@@ -15,6 +16,7 @@ from models import db, Service, Subscription
 from engine.evaluator import SecureTrackLite
 
 client_bp = Blueprint("client", __name__, url_prefix="/client")
+logger = logging.getLogger(__name__)
 
 
 # -- Helpers (from original app.py) -------------------------------------------
@@ -63,8 +65,8 @@ def ensure_engine():
     if _engine is None:
         try:
             _engine = SecureTrackLite()
-        except Exception as e:
-            print("Failed to initialize SecureTrackLite engine:", e, file=sys.stderr)
+        except Exception:
+            logger.exception("Failed to initialize SecureTrackLite engine")
             _engine = None
     return _engine
 
@@ -168,7 +170,10 @@ def policy_evaluation_results():
     if not eng:
         return "Engine not available; ensure data files exist.", 500
 
+    started=time.perf_counter()
+    logger.info("Policy evaluation started", extra={"event_type":"policy_evaluation_started","user_id":str(current_user.id),"source_count":len(src),"destination_count":len(dst),"service_count":len(svc)})
     res = eng.evaluate(src, dst, svc)
+    logger.info("Policy evaluation completed", extra={"event_type":"policy_evaluation_completed","user_id":str(current_user.id),"result_count":len(res),"event_duration":int((time.perf_counter()-started)*1_000_000_000)})
     best = res[0] if res else None
 
     return render_template(
@@ -197,7 +202,15 @@ def policy_evaluation_batch():
     if file.filename == "":
         return "No file selected.", 400
 
-    stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
+    if not file.filename.lower().endswith(".csv"):
+        return "Only CSV files are accepted.", 400
+    raw=file.stream.read(2 * 1024 * 1024 + 1)
+    if len(raw) > 2 * 1024 * 1024:
+        return "CSV file is too large.", 413
+    try:
+        stream = io.StringIO(raw.decode("utf-8-sig"), newline=None)
+    except UnicodeDecodeError:
+        return "CSV must be UTF-8 encoded.", 400
     reader = csv.reader(stream)
 
     rows = list(reader)
@@ -235,6 +248,7 @@ def policy_evaluation_batch():
             "suggestions": top3,
         })
 
+    logger.info("Batch policy evaluation completed", extra={"event_type":"policy_evaluation_batch_completed","user_id":str(current_user.id),"input_rows":len(rows),"result_rows":len(batch_results)})
     return render_template(
         "client/batch_results.html",
         results=batch_results,

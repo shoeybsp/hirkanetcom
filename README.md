@@ -1,5 +1,5 @@
-# SecureTrack‑Lite
 
+# SecureTrack‑Lite  
 A lightweight, open, extensible **firewall policy analysis engine** inspired by Tufin SecureTrack — built for **FortiGate**.  
 It evaluates access requests using **CIDR‑aware logic**, ranks policies by **least‑privilege fit**, and provides a **clean Web UI**.
 
@@ -16,8 +16,8 @@ It evaluates access requests using **CIDR‑aware logic**, ranks policies by **l
 - REST endpoint (`/evaluate`) for automation
 - Extensible engine with modular structure
 - Python requests collector for FortiGate 6.4.x:
-  - Firewall policies
-  - Address objects
+  - Firewall policies  
+  - Address objects  
   - Address groups
   - Service objects and groups
   - Routing table
@@ -68,7 +68,9 @@ git clone https://github.com/your-org/securetrack-lite.git
 cd securetrack-lite
 ```
 
-### 2. Install Python environment
+---
+
+## 🐍 2. Install Python environment
 
 Create and activate a venv:
 
@@ -83,9 +85,12 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-### 3. Collect data from FortiGate
+---
 
-Create a FortiGate REST API admin/token, then run the collector. It uses FortiOS 6.4.x CMDB endpoints and does not require Ansible.
+## 🔧 3. Collect data from FortiGate
+
+Create a FortiGate REST API admin/token, then run the collector. It uses FortiOS
+6.4.x CMDB endpoints and does not require Ansible.
 
 Using environment variables:
 
@@ -115,11 +120,19 @@ python collectors/fortigate_collector.py \
   --vdom root
 ```
 
-TLS verification is disabled by default because many FortiGate management interfaces use self-signed certificates. Add `--verify` when the certificate is trusted by your system.
+TLS verification is disabled by default because many FortiGate management
+interfaces use self-signed certificates. Add `--verify` when the certificate is
+trusted by your system.
 
-`routes.json` is built from configured static routes plus the runtime IPv4 routing table at `/api/v2/monitor/router/ipv4`, so learned routes such as OSPF can be used for interface detection. If your REST API admin cannot access the monitor endpoint, the collector warns and still writes the static routes. Use `--skip-monitor-routes` to collect only static routes.
+`routes.json` is built from configured static routes plus the runtime IPv4
+routing table at `/api/v2/monitor/router/ipv4`, so learned routes such as OSPF
+can be used for interface detection. If your REST API admin cannot access the
+monitor endpoint, the collector warns and still writes the static routes. Use
+`--skip-monitor-routes` to collect only static routes.
 
-### 4. Start the Web UI
+---
+
+## 🌐 4. Start the Web UI
 
 From project root:
 
@@ -146,7 +159,7 @@ docker run --rm -p 5000:5000 securetrack-lite
 
 Open:
 
-```
+```text
 http://127.0.0.1:5000
 ```
 
@@ -233,22 +246,22 @@ http://127.0.0.1:5000/evaluate
 
 Policies are ranked with a **least‑privilege** scoring model:
 
-| Condition                              | Score |
-|----------------------------------------|-------|
-| Per matching source subnet             | +40   |
-| Per matching destination subnet        | +40   |
-| Per matching service                   | +20   |
-| `all` usage                            | −15   |
-| Each extra source/destination object   | −2    |
-| Each extra service object              | −1    |
+Scoring highlights:
 
-The best policy is the one with the **highest score**.
+- +40  per matching source subnet
+- +40  per matching destination subnet
+- +20  per matching service
+- −15 for `all` usage
+- −2  for each extra source/destination address object
+- −1  for each extra service object
+
+The best policy is the one with **highest score**.
 
 ---
 
 ## 🔍 CIDR Matching Logic
 
-Implemented via Python's `ipaddress`:
+Implemented via Python’s `ipaddress`:
 
 - Any user‑provided IP is converted to a `/32`
 - Containment tested using `.subnet_of()`
@@ -263,7 +276,8 @@ The engine reads `routes.json` and picks:
 - Longest-prefix match route
 - Corresponding outgoing interface
 
-When `routes.json` includes monitor routes, static and learned routes are considered together.
+When `routes.json` includes monitor routes, static and learned routes are
+considered together.
 
 This helps validate whether the traffic path even matches the policy.
 
@@ -279,12 +293,10 @@ The code is modular:
 - Add simulated policy-change output
 - Add risk scoring
 
----
 
 ## 🛠️ Troubleshooting
 
-### Engine shows "0 policies"
-
+### Engine shows “0 policies”
 Check:
 
 ```
@@ -296,11 +308,7 @@ data/routes.json
 If empty → rerun collectors.
 
 ### Services do not match
-
 Ensure service names match FortiGate names exactly (e.g., `HTTPS`, `tcp-443`, etc.)
 
 ---
 
-## 📄 License
-
-<!-- Add your license information here -->

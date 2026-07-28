@@ -1,5 +1,5 @@
-import hashlib
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
 import json
 import threading
 
@@ -34,7 +34,7 @@ class User:
 class UserStore:
     """
     Thread-safe file-backed user store.
-    Passwords are stored as salted SHA-256 hashes.
+    Passwords are stored using Werkzeug scrypt hashes.
     """
 
     def __init__(self, path: str | None = None):
@@ -52,10 +52,7 @@ class UserStore:
     # ------------------------------------------------------------------
 
     def _hash_password(self, password: str, salt: str | None = None) -> tuple[str, str]:
-        if salt is None:
-            salt = os.urandom(32).hex()
-        h = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
-        return h, salt
+        return generate_password_hash(password, method="scrypt"), ""
 
     def _load(self) -> None:
         if not os.path.isfile(self._path):
@@ -86,7 +83,7 @@ class UserStore:
         username = username.strip().lower()
         if not username:
             raise ValueError("Username cannot be empty.")
-        if not password or len(password) < 4:
+        if not password or len(password) < 12:
             raise ValueError("Password must be at least 4 characters.")
         if role not in ("admin", "viewer"):
             raise ValueError("Role must be 'admin' or 'viewer'.")
@@ -114,8 +111,7 @@ class UserStore:
             record = self._users.get(username)
             if record is None:
                 return None
-            pw_hash, _ = self._hash_password(password, record["salt"])
-            if pw_hash != record["password_hash"]:
+            if not check_password_hash(record["password_hash"], password):
                 return None
             return User(record["id"], username, record["role"])
 
@@ -147,8 +143,7 @@ class UserStore:
             record = self._users.get(username)
             if record is None:
                 return False
-            pw_hash, _ = self._hash_password(old_password, record["salt"])
-            if pw_hash != record["password_hash"]:
+            if not check_password_hash(record["password_hash"], old_password):
                 return False
             new_hash, new_salt = self._hash_password(new_password)
             record["password_hash"] = new_hash
@@ -165,7 +160,7 @@ class UserStore:
             self._save()
         return True
 
-    def ensure_admin(self, username: str = "admin", password: str = "admin") -> User:
+    def ensure_admin(self, username: str, password: str) -> User:
         """Idempotent – create the admin user if it doesn't exist yet."""
         existing = self.get_by_username(username)
         if existing is not None:

@@ -1,5 +1,5 @@
-import hashlib
 import os
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -15,8 +15,10 @@ from flask import (
 from werkzeug.utils import secure_filename
 from flask_login import login_required, current_user
 from models import db, User, Service, Subscription, BlogCategory, BlogPost, slugify
+from security import hash_password, verify_password
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+logger = logging.getLogger(__name__)
 
 ALLOWED_COVER_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
@@ -86,8 +88,8 @@ def user_create():
             flash("Username is required.", "error")
             return render_template("admin/user_form.html", user=None)
 
-        if not password or len(password) < 4:
-            flash("Password must be at least 4 characters.", "error")
+        if not password or len(password) < 12:
+            flash("Password must be at least 12 characters.", "error")
             return render_template("admin/user_form.html", user=None)
 
         if role not in ("admin", "client"):
@@ -98,12 +100,10 @@ def user_create():
         if existing:
             flash(f"User '{username}' already exists.", "error")
             return render_template("admin/user_form.html", user=None)
-
-        salt = os.urandom(32).hex()
-        pw_hash = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
-        user = User(username=username, password_hash=pw_hash, salt=salt, role=role)
+        user = User(username=username, password_hash=hash_password(password), salt="", role=role)
         db.session.add(user)
         db.session.commit()
+        logger.info("User created", extra={"event_type":"audit_user_created","actor_user_id":str(current_user.id),"target_user_id":str(user.id),"role":role})
 
         flash(f"User '{username}' created successfully.", "success")
         return redirect(url_for("admin.user_list"))
@@ -140,13 +140,11 @@ def user_edit(user_id):
         user.role = role
 
         if password:
-            if len(password) < 4:
-                flash("Password must be at least 4 characters.", "error")
+            if len(password) < 12:
+                flash("Password must be at least 12 characters.", "error")
                 return render_template("admin/user_form.html", user=user)
-            salt = os.urandom(32).hex()
-            pw_hash = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
-            user.password_hash = pw_hash
-            user.salt = salt
+            user.password_hash = hash_password(password)
+            user.salt = ""
 
         db.session.commit()
         flash(f"User '{username}' updated successfully.", "success")
@@ -167,8 +165,10 @@ def user_delete(user_id):
 
     # Also remove their subscriptions
     Subscription.query.filter_by(user_id=user.id).delete()
+    target_id=str(user.id); target_username=user.username
     db.session.delete(user)
     db.session.commit()
+    logger.info("User deleted", extra={"event_type":"audit_user_deleted","actor_user_id":str(current_user.id),"target_user_id":target_id,"target_username":target_username})
 
     flash(f"User '{user.username}' deleted.", "success")
     return redirect(url_for("admin.user_list"))
@@ -590,26 +590,15 @@ def profile():
         confirm_password = request.form.get("confirm_password", "")
 
         if new_password and new_password == confirm_password:
-            if len(new_password) < 4:
-                flash("New password must be at least 4 characters.", "error")
+            if len(new_password) < 12:
+                flash("New password must be at least 12 characters.", "error")
                 return redirect(url_for("admin.profile"))
-
-            # Verify current password
-            user = User.query.get(current_user.id)
-            pw_hash = hashlib.sha256(
-                (user.salt + current_password).encode("utf-8")
-            ).hexdigest()
-            if pw_hash != user.password_hash:
+            user = db.session.get(User, current_user.id)
+            if not verify_password(user, current_password):
                 flash("Current password is incorrect.", "error")
                 return redirect(url_for("admin.profile"))
-
-            # Update password
-            new_salt = os.urandom(32).hex()
-            new_hash = hashlib.sha256(
-                (new_salt + new_password).encode("utf-8")
-            ).hexdigest()
-            user.password_hash = new_hash
-            user.salt = new_salt
+            user.password_hash = hash_password(new_password)
+            user.salt = ""
             db.session.commit()
             flash("Password changed successfully.", "success")
         else:

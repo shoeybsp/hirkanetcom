@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -11,6 +12,9 @@ from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 from urllib3.util.retry import Retry
 
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"), format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logger=logging.getLogger(__name__)
 
 CMDB_OBJECTS = {
     "policies.json": ["firewall/policy"],
@@ -236,10 +240,7 @@ def collect_routes(session, args):
                     for route in fetch_monitor(session, args, path)
                 )
             except requests.RequestException as exc:
-                print(
-                    f"Warning: could not collect monitor/{path}: {exc}",
-                    file=sys.stderr,
-                )
+                logger.warning("Could not collect monitor route", extra={"monitor_path":path}, exc_info=exc)
 
     deduped = {}
     for route in routes:
@@ -265,7 +266,7 @@ def write_json(path, data):
 def main():
     args = parse_args()
     if not args.host or not args.token:
-        print("FORTIGATE_HOST and FORTIGATE_TOKEN are required.", file=sys.stderr)
+        logger.error("FORTIGATE_HOST and FORTIGATE_TOKEN are required")
         return 2
 
     session = build_session(args.token)
@@ -279,11 +280,11 @@ def main():
             objects.extend(fetch_cmdb(session, args, path))
         data = normalize(filename, objects)
         write_json(output_dir / filename, data)
-        print(f"Wrote {len(data)} objects to {output_dir / filename}")
+        logger.info("FortiGate objects written", extra={"object_count":len(data),"output_file":str(output_dir / filename)})
 
     routes = collect_routes(session, args)
     write_json(output_dir / "routes.json", routes)
-    print(f"Wrote {len(routes)} objects to {output_dir / 'routes.json'}")
+    logger.info("FortiGate routes written", extra={"object_count":len(routes),"output_file":str(output_dir / "routes.json")})
 
     return 0
 
