@@ -1,61 +1,89 @@
 name: hirkanet-observability
-x-docker-logging: &id001
+
+x-docker-logging: &default-logging
   driver: json-file
   options:
     max-size: 10m
-    max-file: '5'
+    max-file: "5"
+
 services:
+  elastic-certs-migrate:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    user: "0:0"
+    restart: "no"
+    cpus: "0.25"
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 64
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - legacy_elastic_certs:/legacy-certs:ro
+      - elastic_ca_private:/certs/ca-private
+      - elastic_ca_public:/certs/ca-public
+      - elasticsearch_certs:/certs/elasticsearch
+      - kibana_certs:/certs/kibana
+      - logstash_certs:/certs/logstash
+      - ./elk/migrate-legacy-certs.sh:/usr/local/bin/migrate-legacy-certs.sh:ro
+    command:
+      - /bin/bash
+      - /usr/local/bin/migrate-legacy-certs.sh
+    logging: *default-logging
+
   elastic-certs-setup:
-    image: elasticsearch:${STACK_VERSION:-9.3.8}
-    user: 0:0
-    restart: 'no'
-    cpus: '0.5'
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    user: "0:0"
+    restart: "no"
+    cpus: "0.5"
     mem_limit: 512m
     mem_reservation: 128m
     pids_limit: 128
-    volumes:
-    - elastic_certs:/usr/share/elasticsearch/config/certs
-    command:
-    - /bin/bash
-    - -c
-    - "set -euxo pipefail\n\nCERTS_DIR=/usr/share/elasticsearch/config/certs\nTMP_DIR=\"\
-      $(mktemp -d)\"\ntrap 'rm -rf \"$${TMP_DIR}\"' EXIT\n\nmkdir -p \"$${CERTS_DIR}\"\
-      \ncd \"$${CERTS_DIR}\"\n\nif [ ! -f ca/ca.crt ] || [ ! -f ca/ca.key ]; then\n\
-      \  echo \"No complete Elastic CA exists; creating the initial trust root.\"\n\
-      \n  rm -rf \"$${CERTS_DIR}/ca\"\n\n  /usr/share/elasticsearch/bin/elasticsearch-certutil\
-      \ ca \\\n    --silent \\\n    --pem \\\n    --out \"$${TMP_DIR}/ca.zip\"\n\n\
-      \  test -s \"$${TMP_DIR}/ca.zip\"\n  unzip -oq \"$${TMP_DIR}/ca.zip\" -d \"\
-      $${CERTS_DIR}\"\n\n  test -s \"$${CERTS_DIR}/ca/ca.crt\"\n  test -s \"$${CERTS_DIR}/ca/ca.key\"\
-      \nfi\n\ncat > \"$${TMP_DIR}/instances.yml\" <<'EOF'\ninstances:\n  - name: elasticsearch\n\
-      \    dns:\n      - elasticsearch\n      - localhost\n    ip:\n      - 127.0.0.1\n\
-      \  - name: kibana\n    dns:\n      - kibana\n      - localhost\n    ip:\n  \
-      \    - 127.0.0.1\n  - name: logstash\n    dns:\n      - logstash\n      - localhost\n\
-      \    ip:\n      - 127.0.0.1\nEOF\n\nif [ ! -f elasticsearch/elasticsearch.crt\
-      \ ] || \\\n   [ ! -f elasticsearch/elasticsearch.key ] || \\\n   [ ! -f kibana/kibana.crt\
-      \ ] || \\\n   [ ! -f kibana/kibana.key ] || \\\n   [ ! -f logstash/logstash.crt\
-      \ ] || \\\n   [ ! -f logstash/logstash.key ]; then\n\n  echo \"One or more service\
-      \ certificates are missing; issuing service certificates.\"\n\n  rm -rf \\\n\
-      \    \"$${CERTS_DIR}/elasticsearch\" \\\n    \"$${CERTS_DIR}/kibana\" \\\n \
-      \   \"$${CERTS_DIR}/logstash\"\n\n  /usr/share/elasticsearch/bin/elasticsearch-certutil\
-      \ cert \\\n    --silent \\\n    --pem \\\n    --in \"$${TMP_DIR}/instances.yml\"\
-      \ \\\n    --out \"$${TMP_DIR}/certs.zip\" \\\n    --ca-cert \"$${CERTS_DIR}/ca/ca.crt\"\
-      \ \\\n    --ca-key \"$${CERTS_DIR}/ca/ca.key\"\n\n  test -s \"$${TMP_DIR}/certs.zip\"\
-      \n  unzip -oq \"$${TMP_DIR}/certs.zip\" -d \"$${CERTS_DIR}\"\nfi\n\ntest -s\
-      \ elasticsearch/elasticsearch.crt\ntest -s elasticsearch/elasticsearch.key\n\
-      test -s kibana/kibana.crt\ntest -s kibana/kibana.key\ntest -s logstash/logstash.crt\n\
-      test -s logstash/logstash.key\n\n\nchown -R 1000:0 \"$${CERTS_DIR}\"\nfind \"\
-      $${CERTS_DIR}\" -type d -exec chmod 750 {} +\nfind \"$${CERTS_DIR}\" -type f\
-      \ -exec chmod 640 {} +\n\nchmod 600 \\\n  ca/ca.key \\\n  elasticsearch/elasticsearch.key\
-      \ \\\n  kibana/kibana.key \\\n  logstash/logstash.key \\\n  logstash/logstash.pkcs8.key\n\
-      \nchmod 644 \\\n  ca/ca.crt \\\n  elasticsearch/elasticsearch.crt \\\n  kibana/kibana.crt\
-      \ \\\n  logstash/logstash.crt\n\necho \"Elastic TLS certificates are ready.\"\
-      \n"
+    depends_on:
+      elastic-certs-migrate:
+        condition: service_completed_successfully
     network_mode: none
-    logging: *id001
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - elastic_ca_private:/certs/ca-private
+      - elastic_ca_public:/certs/ca-public
+      - elasticsearch_certs:/certs/elasticsearch
+      - kibana_certs:/certs/kibana
+      - logstash_certs:/certs/logstash
+      - ./elk/setup-certs.sh:/usr/local/bin/setup-certs.sh:ro
+    command:
+      - /bin/bash
+      - /usr/local/bin/setup-certs.sh
+    logging: *default-logging
+
+  openssl-helper:
+    build:
+      context: .
+      dockerfile: elk/openssl-helper/Dockerfile
+    restart: "no"
+    user: "0:0"
+    cpus: "0.25"
+    mem_limit: 128m
+    mem_reservation: 32m
+    pids_limit: 32
+    depends_on:
+      elastic-certs-setup:
+        condition: service_completed_successfully
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - logstash_certs:/certs/logstash
+    logging: *default-logging
+
   elasticsearch:
-    image: elasticsearch:${STACK_VERSION:-9.3.8}
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
     restart: unless-stopped
-    cpus: '1.5'
+    cpus: "1.5"
     mem_limit: 1536m
     mem_reservation: 1g
     pids_limit: 512
@@ -66,47 +94,61 @@ services:
       node.name: elasticsearch
       cluster.name: hirkanet-cluster
       discovery.type: single-node
-      xpack.security.enabled: 'true'
-      xpack.security.autoconfiguration.enabled: 'false'
-      xpack.security.http.ssl.enabled: 'true'
+      bootstrap.memory_lock: "true"
+      xpack.security.enabled: "true"
+      xpack.security.autoconfiguration.enabled: "false"
+      xpack.security.http.ssl.enabled: "true"
       xpack.security.http.ssl.key: certs/elasticsearch/elasticsearch.key
       xpack.security.http.ssl.certificate: certs/elasticsearch/elasticsearch.crt
       xpack.security.http.ssl.certificate_authorities: certs/ca/ca.crt
-      xpack.security.transport.ssl.enabled: 'true'
+      xpack.security.transport.ssl.enabled: "true"
       xpack.security.transport.ssl.verification_mode: full
       xpack.security.transport.ssl.key: certs/elasticsearch/elasticsearch.key
       xpack.security.transport.ssl.certificate: certs/elasticsearch/elasticsearch.crt
       xpack.security.transport.ssl.certificate_authorities: certs/ca/ca.crt
-      xpack.ml.enabled: 'false'
+      xpack.ml.enabled: "false"
       ELASTIC_PASSWORD_FILE: /run/secrets/elastic_password
       ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
       TZ: ${TZ:-Europe/Riga}
     secrets:
-    - elastic_password
+      - elastic_password
     ports:
-    - 127.0.0.1:9200:9200
+      - 127.0.0.1:9200:9200
     volumes:
-    - elastic_certs:/usr/share/elasticsearch/config/certs:ro
-    - es_data:/usr/share/elasticsearch/data
+      - elastic_ca_public:/usr/share/elasticsearch/config/certs/ca:ro
+      - elasticsearch_certs:/usr/share/elasticsearch/config/certs/elasticsearch:ro
+      - es_data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
     healthcheck:
       test:
-      - CMD-SHELL
-      - response=$$(curl --silent --fail --cacert config/certs/ca/ca.crt --user "elastic:$$(cat
-        /run/secrets/elastic_password)" 'https://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s')
-        && echo "$${response}" | grep --quiet '"timed_out":false' && echo "$${response}"
-        | grep --extended-regexp --quiet '"status":"(yellow|green)"'
+        - CMD-SHELL
+        - >-
+          response=$$(curl --silent --fail
+          --cacert config/certs/ca/ca.crt
+          --user "elastic:$$(cat /run/secrets/elastic_password)"
+          'https://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s')
+          && echo "$${response}" | grep --quiet '"timed_out":false'
+          && echo "$${response}" | grep --extended-regexp --quiet '"status":"(yellow|green)"'
       interval: 10s
       timeout: 10s
       retries: 60
       start_period: 90s
     networks:
-    - elastic-backend
-    logging: *id001
+      - elastic-backend
+      - elastic-access
+    logging: *default-logging
+
   elastic-init:
-    image: elasticsearch:${STACK_VERSION:-9.3.8}
-    user: '0'
-    restart: 'no'
-    cpus: '0.5'
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    user: "0:0"
+    restart: "no"
+    cpus: "0.5"
     mem_limit: 512m
     mem_reservation: 128m
     pids_limit: 128
@@ -118,44 +160,85 @@ services:
       KIBANA_PASSWORD_FILE: /run/secrets/kibana_password
       LOGSTASH_PASSWORD_FILE: /run/secrets/logstash_password
     secrets:
-    - elastic_password
-    - kibana_password
-    - logstash_password
+      - elastic_password
+      - kibana_password
+      - logstash_password
     volumes:
-    - elastic_certs:/usr/share/elasticsearch/config/certs:ro
-    - ./elk/setup-ilm.sh:/usr/local/bin/setup-ilm.sh:ro
+      - elastic_ca_public:/usr/share/elasticsearch/config/certs/ca:ro
+      - ./elk/setup-ilm.sh:/usr/local/bin/setup-ilm.sh:ro
     command:
-    - /bin/bash
-    - -c
-    - "set -euo pipefail\nELASTIC_PASSWORD=\"$$(cat \"$${ELASTIC_PASSWORD_FILE}\"\
-      )\"\nKIBANA_PASSWORD=\"$$(cat \"$${KIBANA_PASSWORD_FILE}\")\"\nLOGSTASH_PASSWORD=\"\
-      $$(cat \"$${LOGSTASH_PASSWORD_FILE}\")\"\nfor variable in ELASTIC_PASSWORD KIBANA_PASSWORD\
-      \ LOGSTASH_PASSWORD; do\n  if [ -z \"$${!variable}\" ]; then\n    echo \"ERROR:\
-      \ secret $${variable} is empty\"\n    exit 1\n  fi\ndone\n\nES_URL=https://elasticsearch:9200\n\
-      CACERT=/usr/share/elasticsearch/config/certs/ca/ca.crt\nCURL=\"curl --fail --silent\
-      \ --show-error --cacert $${CACERT} --user elastic:$${ELASTIC_PASSWORD}\"\n\n\
-      $${CURL} \"$${ES_URL}/_security/_authenticate\" >/dev/null\n\n$${CURL} --request\
-      \ POST --header 'Content-Type: application/json' \\\n  \"$${ES_URL}/_security/user/kibana_system/_password\"\
-      \ \\\n  --data \"{\\\"password\\\":\\\"$${KIBANA_PASSWORD}\\\"}\"\n\n$${CURL}\
-      \ --request PUT --header 'Content-Type: application/json' \\\n  \"$${ES_URL}/_security/role/logstash_writer\"\
-      \ \\\n  --data '{\n    \"cluster\": [\"monitor\", \"manage_index_templates\"\
-      , \"manage_ilm\"],\n    \"indices\": [{\n      \"names\": [\"hirkanet-logs-*\"\
-      , \"hirkanet-dead-letter-*\"],\n      \"privileges\": [\"auto_configure\", \"\
-      create\", \"create_doc\", \"create_index\", \"manage\", \"manage_ilm\", \"write\"\
-      ]\n    }]\n  }'\n\n$${CURL} --request POST --header 'Content-Type: application/json'\
-      \ \\\n  \"$${ES_URL}/_security/user/logstash_internal\" \\\n  --data \"{\\\"\
-      password\\\":\\\"$${LOGSTASH_PASSWORD}\\\",\\\"roles\\\":[\\\"logstash_writer\\\
-      \"],\\\"full_name\\\":\\\"Hirkanet Logstash Writer\\\"}\"\n\nELASTICSEARCH_URL=\"\
-      $${ES_URL}\" ELASTICSEARCH_CA=\"$${CACERT}\" ELASTIC_PASSWORD_FILE=\"$${ELASTIC_PASSWORD_FILE}\"\
-      \ /usr/local/bin/setup-ilm.sh\necho \"Elastic users, TLS trust, and ILM resources\
-      \ are ready.\"\n"
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        ELASTIC_PASSWORD="$$(cat "$${ELASTIC_PASSWORD_FILE}")"
+        KIBANA_PASSWORD="$$(cat "$${KIBANA_PASSWORD_FILE}")"
+        LOGSTASH_PASSWORD="$$(cat "$${LOGSTASH_PASSWORD_FILE}")"
+
+        for variable in ELASTIC_PASSWORD KIBANA_PASSWORD LOGSTASH_PASSWORD; do
+          if [ -z "$${!variable}" ]; then
+            echo "ERROR: secret $${variable} is empty"
+            exit 1
+          fi
+        done
+
+        ES_URL=https://elasticsearch:9200
+        CACERT=/usr/share/elasticsearch/config/certs/ca/ca.crt
+
+        curl_es() {
+          curl --fail --silent --show-error \
+            --cacert "$${CACERT}" \
+            --user "elastic:$${ELASTIC_PASSWORD}" \
+            "$@"
+        }
+
+        curl_es "$${ES_URL}/_security/_authenticate" >/dev/null
+
+        curl_es --request POST --header 'Content-Type: application/json' \
+          "$${ES_URL}/_security/user/kibana_system/_password" \
+          --data "{\"password\":\"$${KIBANA_PASSWORD}\"}"
+
+        curl_es --request PUT --header 'Content-Type: application/json' \
+          "$${ES_URL}/_security/role/logstash_writer" \
+          --data '{
+            "cluster": ["monitor", "manage_index_templates", "manage_ilm"],
+            "indices": [{
+              "names": [
+                "hirkanet-logs",
+                "hirkanet-logs-*",
+                "hirkanet-dead-letter",
+                "hirkanet-dead-letter-*"
+              ],
+              "privileges": [
+                "auto_configure",
+                "create",
+                "create_doc",
+                "create_index",
+                "manage",
+                "manage_ilm",
+                "write"
+              ]
+            }]
+          }'
+
+        curl_es --request POST --header 'Content-Type: application/json' \
+          "$${ES_URL}/_security/user/logstash_internal" \
+          --data "{\"password\":\"$${LOGSTASH_PASSWORD}\",\"roles\":[\"logstash_writer\"],\"full_name\":\"Hirkanet Logstash Writer\"}"
+
+        ELASTICSEARCH_URL="$${ES_URL}" \
+        ELASTICSEARCH_CA="$${CACERT}" \
+        ELASTIC_PASSWORD_FILE="$${ELASTIC_PASSWORD_FILE}" \
+          /usr/local/bin/setup-ilm.sh
+
+        echo "Elastic users, TLS trust, and ILM resources are ready."
     networks:
-    - elastic-backend
-    logging: *id001
+      - elastic-backend
+    logging: *default-logging
+
   logstash:
-    image: logstash:${STACK_VERSION:-9.3.8}
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION:-9.3.8}
     restart: unless-stopped
-    cpus: '1.0'
+    cpus: "1.0"
     mem_limit: 768m
     mem_reservation: 512m
     pids_limit: 256
@@ -167,44 +250,48 @@ services:
     environment:
       LOGSTASH_PASSWORD_FILE: /run/secrets/logstash_password
       LS_JAVA_OPTS: ${LS_JAVA_OPTS:--Xms256m -Xmx256m}
-      XPACK_MONITORING_ENABLED: 'false'
+      XPACK_MONITORING_ENABLED: "false"
       API_HTTP_HOST: 127.0.0.1
-      API_HTTP_PORT: '9600'
+      API_HTTP_PORT: "9600"
       TZ: ${TZ:-Europe/Riga}
     secrets:
-    - logstash_password
+      - logstash_password
     command:
-    - /bin/bash
-    - -c
-    - 'export LOGSTASH_PASSWORD="$$(cat "$${LOGSTASH_PASSWORD_FILE}")"
-
-      exec /usr/local/bin/docker-entrypoint
-
-      '
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        export LOGSTASH_PASSWORD="$$(cat "$${LOGSTASH_PASSWORD_FILE}")"
+        test -n "$${LOGSTASH_PASSWORD}"
+        exec /usr/local/bin/docker-entrypoint
     volumes:
-    - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
-    - elastic_certs:/usr/share/logstash/config/certs:ro
-    - logstash_data:/usr/share/logstash/data
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - elastic_ca_public:/usr/share/logstash/config/certs/ca:ro
+      - logstash_certs:/usr/share/logstash/config/certs/logstash:ro
+      - logstash_data:/usr/share/logstash/data
     expose:
-    - '5044'
+      - "5044"
     healthcheck:
       test:
-      - CMD-SHELL
-      - 'ruby -rnet/http -rjson -e '' response = Net::HTTP.get_response(URI("http://127.0.0.1:9600/_node/pipelines"));
-        body = JSON.parse(response.body); exit(response.is_a?(Net::HTTPSuccess) &&
-        body.fetch("pipelines", {}).key?("main") ? 0 : 1)'' '
+        - CMD-SHELL
+        - >-
+          ruby -rnet/http -rjson -e '
+          response = Net::HTTP.get_response(URI("http://127.0.0.1:9600/_node/pipelines"));
+          body = JSON.parse(response.body);
+          exit(response.is_a?(Net::HTTPSuccess) && body.fetch("pipelines", {}).key?("main") ? 0 : 1)'
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 45s
     networks:
-    - logging-ingest
-    - elastic-backend
-    logging: *id001
+      - logging-ingest
+      - elastic-backend
+    logging: *default-logging
+
   kibana:
-    image: kibana:${STACK_VERSION:-9.3.8}
+    image: docker.elastic.co/kibana/kibana:${STACK_VERSION:-9.3.8}
     restart: unless-stopped
-    cpus: '1.0'
+    cpus: "1.0"
     mem_limit: 1g
     mem_reservation: 512m
     pids_limit: 256
@@ -214,7 +301,7 @@ services:
     environment:
       SERVER_NAME: kibana
       SERVER_HOST: 0.0.0.0
-      SERVER_SSL_ENABLED: 'true'
+      SERVER_SSL_ENABLED: "true"
       SERVER_SSL_CERTIFICATE: /usr/share/kibana/config/certs/kibana/kibana.crt
       SERVER_SSL_KEY: /usr/share/kibana/config/certs/kibana/kibana.key
       ELASTICSEARCH_HOSTS: '["https://elasticsearch:9200"]'
@@ -225,85 +312,119 @@ services:
       KIBANA_SECURITY_ENCRYPTION_KEY_FILE: /run/secrets/kibana_security_encryption_key
       KIBANA_SAVED_OBJECTS_ENCRYPTION_KEY_FILE: /run/secrets/kibana_saved_objects_encryption_key
       KIBANA_REPORTING_ENCRYPTION_KEY_FILE: /run/secrets/kibana_reporting_encryption_key
-      TELEMETRY_OPTIN: 'false'
-      TELEMETRY_ALLOWCHANGINGOPTINSTATUS: 'false'
+      TELEMETRY_OPTIN: "false"
+      TELEMETRY_ALLOWCHANGINGOPTINSTATUS: "false"
       TZ: ${TZ:-Europe/Riga}
     secrets:
-    - kibana_password
-    - kibana_security_encryption_key
-    - kibana_saved_objects_encryption_key
-    - kibana_reporting_encryption_key
+      - kibana_password
+      - kibana_security_encryption_key
+      - kibana_saved_objects_encryption_key
+      - kibana_reporting_encryption_key
     command:
-    - /bin/bash
-    - -c
-    - 'export ELASTICSEARCH_PASSWORD="$$(cat "$${KIBANA_PASSWORD_FILE}")"
-
-      export XPACK_SECURITY_ENCRYPTIONKEY="$$(cat "$${KIBANA_SECURITY_ENCRYPTION_KEY_FILE}")"
-
-      export XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY="$$(cat "$${KIBANA_SAVED_OBJECTS_ENCRYPTION_KEY_FILE}")"
-
-      export XPACK_REPORTING_ENCRYPTIONKEY="$$(cat "$${KIBANA_REPORTING_ENCRYPTION_KEY_FILE}")"
-
-      exec /usr/local/bin/kibana-docker
-
-      '
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        export ELASTICSEARCH_PASSWORD="$$(cat "$${KIBANA_PASSWORD_FILE}")"
+        export XPACK_SECURITY_ENCRYPTIONKEY="$$(cat "$${KIBANA_SECURITY_ENCRYPTION_KEY_FILE}")"
+        export XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY="$$(cat "$${KIBANA_SAVED_OBJECTS_ENCRYPTION_KEY_FILE}")"
+        export XPACK_REPORTING_ENCRYPTIONKEY="$$(cat "$${KIBANA_REPORTING_ENCRYPTION_KEY_FILE}")"
+        exec /usr/local/bin/kibana-docker
     ports:
-    - 127.0.0.1:5601:5601
+      - 127.0.0.1:5601:5601
     volumes:
-    - elastic_certs:/usr/share/kibana/config/certs:ro
-    - kibana_data:/usr/share/kibana/data
+      - elastic_ca_public:/usr/share/kibana/config/certs/ca:ro
+      - kibana_certs:/usr/share/kibana/config/certs/kibana:ro
+      - kibana_data:/usr/share/kibana/data
     healthcheck:
       test:
-      - CMD-SHELL
-      - response=$$(curl --silent --fail --cacert config/certs/ca/ca.crt https://127.0.0.1:5601/api/status)
-        && echo "$${response}" | grep --quiet '"level":"available"'
+        - CMD-SHELL
+        - >-
+          response=$$(curl --silent --fail
+          --cacert config/certs/ca/ca.crt
+          https://127.0.0.1:5601/api/status)
+          && echo "$${response}" | grep --quiet '"level":"available"'
       interval: 15s
       timeout: 10s
       retries: 60
       start_period: 90s
     networks:
-    - elastic-backend
-    logging: *id001
-  filebeat:
-    image: elastic/filebeat:8.19.19
+      - elastic-backend
+      - elastic-access
+    logging: *default-logging
+
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
     restart: unless-stopped
-    cpus: '0.5'
+    cpus: "0.25"
+    mem_limit: 128m
+    mem_reservation: 32m
+    pids_limit: 64
+    environment:
+      CONTAINERS: "1"
+      EVENTS: "1"
+      INFO: "1"
+      PING: "1"
+      VERSION: "1"
+      POST: "0"
+      LOG_LEVEL: warning
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /run:size=8m,mode=0755,nosuid,nodev
+      - /tmp:size=8m,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:2375/_ping | grep -qx OK
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - docker-metadata
+    logging: *default-logging
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:${STACK_VERSION:-9.3.8}
+    restart: unless-stopped
+    cpus: "0.5"
     mem_limit: 256m
     mem_reservation: 128m
     pids_limit: 128
     user: root
+    depends_on:
+      logstash:
+        condition: service_healthy
+      docker-socket-proxy:
+        condition: service_healthy
     volumes:
-    - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-    - elastic_certs:/usr/share/filebeat/certs:ro
-    - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    - /var/run/docker.sock:/var/run/docker.sock:ro
-    - filebeat_data:/usr/share/filebeat/data
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - elastic_ca_public:/usr/share/filebeat/certs:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - filebeat_data:/usr/share/filebeat/data
     command:
-    - filebeat
-    - -e
-    - --strict.perms=false
+      - filebeat
+      - -e
+      - --strict.perms=false
     healthcheck:
       test:
-      - CMD-SHELL
-      - filebeat test output -e --strict.perms=false >/dev/null 2>&1
+        - CMD-SHELL
+        - filebeat test output -e --strict.perms=false >/dev/null 2>&1
       interval: 15s
       timeout: 5s
       retries: 20
       start_period: 30s
     networks:
-    - logging-ingest
-    logging: *id001
-  openssl-helper:
-    image: alpine:latest
-    restart: 'no'
-    volumes:
-    - elastic_certs:/certs
-    command:
-    - /bin/sh
-    - -c
-    - set -e; apk add --no-cache openssl >/dev/null; if [ ! -s /certs/logstash/logstash.pkcs8.key
-      ]; then openssl pkcs8 -inform PEM -in /certs/logstash/logstash.key -topk8 -nocrypt
-      -outform PEM -out /certs/logstash/logstash.pkcs8.key; fi; chmod 600 /certs/logstash/logstash.pkcs8.key
+      - logging-ingest
+      - docker-metadata
+    logging: *default-logging
+
 secrets:
   elastic_password:
     file: ${SECRETS_DIR:-./secrets}/elastic_password
@@ -317,12 +438,20 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/kibana_saved_objects_encryption_key
   kibana_reporting_encryption_key:
     file: ${SECRETS_DIR:-./secrets}/kibana_reporting_encryption_key
+
 volumes:
-  elastic_certs: null
-  es_data: null
-  kibana_data: null
-  logstash_data: null
-  filebeat_data: null
+  legacy_elastic_certs:
+    name: hirkanet-observability_elastic_certs
+  elastic_ca_private:
+  elastic_ca_public:
+  elasticsearch_certs:
+  kibana_certs:
+  logstash_certs:
+  es_data:
+  kibana_data:
+  logstash_data:
+  filebeat_data:
+
 networks:
   logging-ingest:
     driver: bridge
@@ -330,3 +459,8 @@ networks:
   elastic-backend:
     driver: bridge
     internal: true
+  docker-metadata:
+    driver: bridge
+    internal: true
+  elastic-access:
+    driver: bridge

@@ -1,85 +1,267 @@
-# Hirkanet Logging and Elastic Stack Guide
+# Hirkanet Logging Guide
 
-Hirkanet emits structured application, HTTP, audit, collector, and error events as JSON on stdout. Docker captures those records, Filebeat reads only the Hirkanet application and PostgreSQL containers, Logstash parses and enriches them, and Elasticsearch stores valid events through the ILM-managed `hirkanet-logs` rollover alias.
-
-## Secured data path
+## Data flow
 
 ```text
-Hirkanet/PostgreSQL stdout
-          ↓
-Docker json-file logs
-          ↓
-Filebeat --TLS--> Logstash --HTTPS--> Elasticsearch
-                                      ↑
-                           Kibana --HTTPS
+Hirkanet application container ─┐
+                                ├─ Docker JSON logs
+PostgreSQL container ───────────┘
+          |
+          v
+Filebeat filestream
+  + restricted Docker metadata proxy
+          |
+          | TLS with full hostname verification
+          v
+Logstash
+  + application JSON parsing
+  + PostgreSQL classification
+  + conditional dead-letter routing
+          |
+          | HTTPS with full hostname verification
+          v
+Elasticsearch ILM aliases
+  ├─ hirkanet-logs
+  └─ hirkanet-dead-letter
+          |
+          v
+Kibana
 ```
 
-The first Compose startup generates a private CA plus certificates for Elasticsearch, Logstash, and Kibana. All Elastic services use the same `STACK_VERSION`.
+Filebeat selects containers using stable Compose labels:
 
-## Main files
-
-- `logging_config.py`: JSON formatting, secret redaction, request IDs, and request duration.
-- `api/app.py`: logging initialization, authentication events, readiness, and exception events.
-- `gunicorn_logging.py`: structured Gunicorn access logs.
-- `client/routes.py`: policy evaluation and batch evaluation events.
-- `admin/routes.py`: administrative audit events and secure password handling.
-- `collectors/fortigate_collector.py`: collector operational logs.
-- `elk/filebeat/filebeat.yml`: Docker filestream input, container filtering, and TLS Logstash output.
-- `elk/logstash/pipeline/logstash.conf`: TLS Beats input, JSON parsing, dead-letter routing, HTTPS Elasticsearch output, and ILM alias configuration.
-- `elk/setup-ilm.sh`: idempotent ILM policy, index template, and initial rollover-index setup.
-- `docker-compose.elastic.yml`: certificate generation, secured Elastic services, loopback bindings, and health checks.
-- `ELK-SETUP.md`: deployment, trust, verification, rotation, and troubleshooting procedures.
-
-## Start
-
-1. Configure all required secrets in `.env`.
-2. Set `vm.max_map_count=262144` on Linux.
-3. Run `docker compose -f docker-compose.elastic.yml up -d`.
-4. Wait for `elastic-init` to complete successfully.
-5. Open Kibana at `https://127.0.0.1:5601`.
-
-ILM installation is automatic. Do not run a separate unsecured or HTTP-based setup command.
-
-## Indexing and retention
-
-Normal events are written through the `hirkanet-logs` alias. The lifecycle policy rolls the write index at 10 GB primary-shard size or one day of age and deletes rolled indices after 30 days.
-
-Malformed Hirkanet JSON records are routed through the `hirkanet-dead-letter` rollover alias. They use the separate `hirkanet-dead-letter-policy`: rollover at 5 GB or 7 days, then deletion 30 days after rollover. This keeps parse failures isolated and bounded.
-
-## Application logging
-
-```python
-import logging
-
-logger = logging.getLogger(__name__)
-logger.info(
-    "Policy evaluation completed",
-    extra={
-        "event_type": "policy_evaluation_completed",
-        "user_id": str(current_user.id),
-        "result_count": len(results),
-        "event_duration": duration_ns,
-    },
-)
+```text
+hirkanet_log_role=application
+hirkanet_log_role=database
 ```
 
-Use `debug` for diagnostics, `info` for normal business events, `warning` for recoverable anomalies, `error` for failed operations, and `exception` inside exception handlers.
+Container names are not used because Compose-generated names may change.
 
-Never log credentials, tokens, cookies, authorization headers, password material, private keys, or complete sensitive request payloads.
+## Application events
 
-## Kibana examples
+The Flask application emits one JSON object per log line. A typical event is:
 
-- Errors: `service.name: "hirkanet" and log.level: ("error" or "critical")`
-- Authentication failures: `event_type: "authentication_failure"`
-- Policy failures: `event_type: "policy_evaluation_failure"`
-- Slow requests: `event.duration > 1000000000`
-- One request: `request.id: "<request-id>"`
-- Parse failures: `tags: "hirkanet_json_parse_failure"`
+```json
+{
+  "@timestamp": "2026-08-01T10:00:00+00:00",
+  "message": "HTTP request completed",
+  "log": {
+    "level": "info",
+    "logger": "hirkanet.http"
+  },
+  "service": {
+    "name": "hirkanet"
+  },
+  "event": {
+    "dataset": "hirkanet.http_access"
+  },
+  "request": {
+    "id": "b67f74b3-7bb4-42f3-a3ae-9879b57fb5d1"
+  },
+  "event_type": "access",
+  "event_duration": 13800000,
+  "http_status_code": 200,
+  "user_id": "17"
+}
+```
 
-See `ELK-SETUP.md` for CA export, HTTPS commands, ILM verification, and certificate rotation.
+Logstash parses valid application JSON into searchable top-level fields and
+preserves the original line in:
 
-## TLS identity verification
+```text
+event.original
+```
 
-The logging path uses full hostname verification, not CA-only verification. Filebeat connects to `logstash`, while Logstash and Kibana connect to `elasticsearch`; those exact DNS identities are present in the generated service certificates. A certificate signed by the Hirkanet CA is rejected when its SAN does not match the requested hostname.
+Compatibility copies are created for commonly used ECS-style fields:
 
-When changing Compose service names, DNS aliases, or endpoints, update the certificate instance definitions and reissue only the affected service certificates from the existing CA. Do not disable hostname checks to make a renamed endpoint connect.
+| Application field | Searchable normalized field |
+|---|---|
+| `event_type` | `event.type` |
+| `event_duration` | `event.duration` |
+| `http_status_code` | `http.response.status_code` |
+| `user_id` | `user.id` |
+
+The original application fields are retained to avoid breaking existing saved
+queries during migration.
+
+## PostgreSQL events
+
+PostgreSQL container output is not forced through a JSON parser. Logstash adds:
+
+```text
+service.name = postgresql
+event.dataset = postgresql.log
+event.kind = event
+event.original = <original database line>
+```
+
+PostgreSQL events are written to the normal `hirkanet-logs` alias.
+
+## Dead-letter behavior
+
+Only malformed application JSON is routed to the dead-letter alias.
+
+A parse-failure event includes:
+
+```text
+event.dataset = hirkanet.dead_letter
+event.kind = pipeline_error
+error.type = json_parse_failure
+error.message = Application container log line was not valid JSON
+event.original = <unparsed line>
+```
+
+Valid events are never written to the dead-letter alias, and malformed
+application events are never written to the normal alias.
+
+This is an Elasticsearch dead-letter index path, not Logstash's filesystem DLQ.
+
+## ILM destinations
+
+Logstash uses explicit ILM settings:
+
+```text
+Normal alias:       hirkanet-logs
+Normal policy:      hirkanet-logs-policy
+Dead-letter alias:  hirkanet-dead-letter
+Dead-letter policy: hirkanet-dead-letter-policy
+```
+
+Do not replace these aliases with date-based index names such as
+`hirkanet-logs-%{+YYYY.MM.dd}`. Direct date-based writes bypass the configured
+rollover aliases.
+
+## Recommended Kibana data views
+
+Normal logs:
+
+```text
+hirkanet-logs*
+```
+
+Dead-letter events:
+
+```text
+hirkanet-dead-letter*
+```
+
+Time field:
+
+```text
+@timestamp
+```
+
+## Useful Kibana queries
+
+Application access events:
+
+```text
+event.dataset : "hirkanet.http_access"
+```
+
+HTTP errors:
+
+```text
+http.response.status_code >= 500
+```
+
+Policy-evaluation events:
+
+```text
+event.type : "policy_evaluation_*" or event_type : "policy_evaluation_*"
+```
+
+Database logs:
+
+```text
+event.dataset : "postgresql.log"
+```
+
+Dead-letter events:
+
+```text
+event.dataset : "hirkanet.dead_letter"
+```
+
+A request by correlation ID:
+
+```text
+request.id : "b67f74b3-7bb4-42f3-a3ae-9879b57fb5d1"
+```
+
+## Runtime verification
+
+Check service health:
+
+```bash
+docker compose -f docker-compose.elastic.yml ps -a
+```
+
+Run the complete normal/dead-letter test:
+
+```bash
+./elk/verify-ingestion.sh
+```
+
+Inspect Logstash pipeline state:
+
+```bash
+curl --silent http://127.0.0.1:9600/_node/pipelines
+```
+
+The Logstash API is bound inside the container only, so use:
+
+```bash
+docker compose -f docker-compose.elastic.yml exec logstash \
+  curl --silent http://127.0.0.1:9600/_node/pipelines?pretty
+```
+
+Inspect Filebeat output connectivity:
+
+```bash
+docker compose -f docker-compose.elastic.yml exec filebeat \
+  filebeat test output -e --strict.perms=false
+```
+
+## Failure investigation
+
+### No events appear
+
+1. Confirm the application or database container has the expected label.
+2. Confirm `docker-socket-proxy` is healthy.
+3. Confirm Filebeat is healthy and can reach Logstash.
+4. Confirm Logstash's `main` pipeline is loaded.
+5. Confirm the `hirkanet-logs` alias has a write index.
+
+### All application events reach dead-letter
+
+The application is probably emitting plaintext instead of JSON. Confirm:
+
+```dotenv
+LOG_FORMAT=json
+```
+
+Then inspect raw Docker output:
+
+```bash
+docker logs --tail=20 <application-container>
+```
+
+### Valid events appear in both destinations
+
+That indicates an old Logstash pipeline is still mounted or running. The current
+pipeline has mutually exclusive conditional outputs. Recreate Logstash:
+
+```bash
+docker compose -f docker-compose.elastic.yml up -d --force-recreate logstash
+```
+
+### ILM does not roll over
+
+Verify Logstash is writing to aliases, not direct date-based indices:
+
+```bash
+curl --cacert ./hirkanet-elastic-ca.crt \
+  -u "elastic:$(cat secrets/elastic_password)" \
+  'https://127.0.0.1:9200/_alias/hirkanet-logs?pretty'
+```

@@ -1,0 +1,26 @@
+Hirkanet Elastic Stack replacement files
+Generated: 2026-08-01
+
+.env.example
+COMPOSE-DEPLOYMENT.md
+ELK-SETUP.md
+LOGGING-GUIDE.md
+ELASTIC-STACK-IMPLEMENTATION-REPORT.md
+docker-compose.elastic.yml
+elk/convert-logstash-key.sh
+elk/filebeat/filebeat.yml
+elk/logstash/pipeline/logstash.conf
+elk/migrate-legacy-certs.sh
+elk/openssl-helper/Dockerfile
+elk/rotate-elastic-ca.sh
+elk/setup-certs.sh
+elk/setup-ilm.sh
+elk/verify-ingestion.sh
+tests/test_compose_health_checks.py
+tests/test_compose_network_segmentation.py
+tests/test_compose_split.py
+tests/test_elastic_certificate_rotation.py
+tests/test_elastic_ingestion_pipeline.py
+tests/test_elastic_stack_configuration.py
+tests/test_full_tls_hostname_verification.py
+tests/test_secret_configuration.py

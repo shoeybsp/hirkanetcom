@@ -37,11 +37,13 @@ def test_services_mount_expected_secrets():
 
 
 def test_application_supports_file_based_secrets():
+    import re
+
     app = (ROOT / "api/app.py").read_text()
     models = (ROOT / "models.py").read_text()
-    assert 'read_secret("SECRET_KEY"' in app
-    assert 'read_secret("POSTGRES_PASSWORD"' in models
-    assert 'read_secret("BOOTSTRAP_ADMIN_PASSWORD"' in models
+    assert re.search(r'read_secret\(\s*"SECRET_KEY"', app)
+    assert re.search(r'read_secret\(\s*"POSTGRES_PASSWORD"', models)
+    assert re.search(r'read_secret\(\s*"BOOTSTRAP_ADMIN_PASSWORD"', models)
     assert "URL.create(" in models
 
 

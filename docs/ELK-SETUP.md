@@ -1,78 +1,287 @@
 # Hirkanet Elastic Stack Setup
 
-Hirkanet deploys Elasticsearch, Logstash, Kibana, and Filebeat with authentication and TLS enabled. A private certificate authority and service certificates are generated in the `elastic_certs` Docker volume only during the initial bootstrap. Subsequent startups must reuse that trust root and will fail closed if the CA material is incomplete.
+Hirkanet deploys Elasticsearch, Logstash, Kibana, and Filebeat as a separate
+Compose project named `hirkanet-observability`. Authentication and TLS are
+required on every supported Elastic connection.
 
 ## Prerequisites
 
 - Docker Engine and Docker Compose v2
-- Linux host setting: `sudo sysctl -w vm.max_map_count=262144`
-- At least 4 GB of free RAM for the complete stack
-- Strong values for all Elastic and Kibana secrets in `.env`
+- At least 4 GB of available RAM for the complete stack
+- Linux `vm.max_map_count` set to `1048576`
+- Strong secret files under `./secrets`
 
-The Elastic images use one version through `STACK_VERSION`. Filebeat no longer has a separate version setting.
+Set and persist the required Linux kernel value:
 
-## Required environment values
+```bash
+sudo sysctl -w vm.max_map_count=1048576
+printf 'vm.max_map_count=1048576\n' | sudo tee /etc/sysctl.d/99-elasticsearch.conf
+sudo sysctl --system
+```
 
-Set these values in `.env` before starting the stack:
+Verify it:
+
+```bash
+sysctl vm.max_map_count
+```
+
+Expected:
+
+```text
+vm.max_map_count = 1048576
+```
+
+Elastic requires `1048576` for current Elasticsearch releases. Do not use the
+older `262144` value for this stack.
+
+## Versions and non-secret environment settings
+
+The four Elastic products use one version variable:
 
 ```dotenv
 STACK_VERSION=9.3.8
-ELASTIC_PASSWORD=replace-with-a-strong-password
-KIBANA_PASSWORD=replace-with-a-different-strong-password
-LOGSTASH_PASSWORD=replace-with-a-different-strong-password
-KIBANA_SECURITY_ENCRYPTION_KEY=at-least-32-characters-long
-KIBANA_SAVED_OBJECTS_ENCRYPTION_KEY=at-least-32-characters-long
-KIBANA_REPORTING_ENCRYPTION_KEY=at-least-32-characters-long
+TZ=Europe/Riga
+ES_JAVA_OPTS=-Xms512m -Xmx512m
+LS_JAVA_OPTS=-Xms256m -Xmx256m
 ```
 
-Generate secrets, for example:
+The Compose file uses the official Elastic registry:
+
+- `docker.elastic.co/elasticsearch/elasticsearch`
+- `docker.elastic.co/logstash/logstash`
+- `docker.elastic.co/kibana/kibana`
+- `docker.elastic.co/beats/filebeat`
+
+The OpenSSL helper is built from the pinned `alpine:3.21.3` base image. OpenSSL
+is installed at image build time, not every time the stack starts.
+
+## Required secret files
+
+The stack reads credentials from Docker Compose secret files, not plaintext
+Compose environment variables:
+
+```text
+secrets/elastic_password
+secrets/kibana_password
+secrets/logstash_password
+secrets/kibana_security_encryption_key
+secrets/kibana_saved_objects_encryption_key
+secrets/kibana_reporting_encryption_key
+```
+
+Generate new values with restrictive permissions:
 
 ```bash
-python -c 'import secrets; print(secrets.token_urlsafe(48))'
+umask 077
+openssl rand -base64 48 > secrets/elastic_password
+openssl rand -base64 48 > secrets/kibana_password
+openssl rand -base64 48 > secrets/logstash_password
+openssl rand -base64 48 > secrets/kibana_security_encryption_key
+openssl rand -base64 48 > secrets/kibana_saved_objects_encryption_key
+openssl rand -base64 48 > secrets/kibana_reporting_encryption_key
+chmod 600 secrets/*
 ```
 
-Do not commit `.env` or exported private keys.
+Kibana encryption keys must remain stable. Changing them can make existing
+sessions, reports, and encrypted saved objects unreadable.
+
+## Certificate architecture
+
+Private key access is separated across Docker volumes:
+
+| Volume | Contents | Runtime consumers |
+|---|---|---|
+| `elastic_ca_private` | CA certificate and CA private key | Certificate jobs only |
+| `elastic_ca_public` | Public CA certificate only | Elasticsearch, initialization, Logstash, Kibana, Filebeat |
+| `elasticsearch_certs` | Elasticsearch certificate and private key | Elasticsearch only |
+| `kibana_certs` | Kibana certificate and private key | Kibana only |
+| `logstash_certs` | Logstash certificate and private keys | Logstash and one-shot OpenSSL helper |
+
+Filebeat does not receive a service private key. It receives only the public CA
+certificate needed to verify Logstash.
+
+### Upgrade from the previous single certificate volume
+
+The one-shot `elastic-certs-migrate` job checks the previous volume named:
+
+```text
+hirkanet-observability_elastic_certs
+```
+
+When that volume contains a complete CA and the new split volumes are empty,
+the job copies the existing CA and service certificates into the split volumes.
+This preserves the existing trust root and avoids silently invalidating exported
+CA certificates.
+
+Migration fails closed when the legacy CA contains only one of `ca.crt` or
+`ca.key`.
+
+## Deterministic startup order
+
+The Compose dependency chain is:
+
+```text
+elastic-certs-migrate
+  -> elastic-certs-setup
+      -> openssl-helper
+      -> elasticsearch
+          -> elastic-init
+              -> logstash
+              -> kibana
+                  -> filebeat
+```
+
+Important behaviors:
+
+1. Legacy certificates are migrated only when the new CA volume is empty.
+2. A CA is created only when both CA files are absent.
+3. Exactly one missing CA file stops startup.
+4. Missing service certificates are reissued with the existing CA.
+5. The Logstash PKCS#8 key is created only after the Logstash PEM key exists.
+6. Elasticsearch must become healthy before users, roles, templates, aliases,
+   and ILM policies are initialized.
+7. Filebeat starts only after Logstash and the restricted Docker socket proxy
+   are healthy.
+
+## Validate configuration before startup
+
+Parse the Compose model:
+
+```bash
+docker compose -f docker-compose.elastic.yml config >/tmp/hirkanet-elastic-compose.yml
+```
+
+Build the pinned OpenSSL helper:
+
+```bash
+docker compose -f docker-compose.elastic.yml build openssl-helper
+```
+
+Run the repository configuration tests:
+
+```bash
+pytest -q \
+  tests/test_elastic_stack_configuration.py \
+  tests/test_full_tls_hostname_verification.py \
+  tests/test_elastic_certificate_rotation.py \
+  tests/test_elastic_ingestion_pipeline.py \
+  tests/test_compose_network_segmentation.py \
+  tests/test_compose_resource_limits.py \
+  tests/test_compose_health_checks.py \
+  tests/test_compose_split.py
+```
 
 ## Start the stack
 
 ```bash
-docker compose -f docker-compose.elastic.yml up -d
+docker compose -f docker-compose.elastic.yml up -d --build
 ```
 
-The startup sequence automatically:
-
-1. Creates the private CA only when no CA has ever been initialized, then issues service certificates from that CA.
-2. Starts Elasticsearch with HTTPS and encrypted transport traffic.
-3. Creates the `kibana_system` and Logstash credentials.
-4. Installs separate ILM policies for normal logs and dead-letter events.
-5. Installs the matching index template.
-6. Creates `hirkanet-logs-000001` with `hirkanet-logs` as its write alias.
-7. Starts TLS-protected Logstash, Kibana, and Filebeat connections.
-
-No separate ILM installation command is required.
-
-Check startup status:
+Inspect all services, including completed one-shot jobs:
 
 ```bash
-docker compose -f docker-compose.elastic.yml ps
-docker compose -f docker-compose.elastic.yml logs --tail=100 \
-  elastic-certs-setup elasticsearch elastic-init logstash kibana filebeat
+docker compose -f docker-compose.elastic.yml ps -a
 ```
+
+Inspect startup logs:
+
+```bash
+docker compose -f docker-compose.elastic.yml logs --tail=200 \
+  elastic-certs-migrate \
+  elastic-certs-setup \
+  openssl-helper \
+  elasticsearch \
+  elastic-init \
+  logstash \
+  kibana \
+  docker-socket-proxy \
+  filebeat
+```
+
+Expected state:
+
+- `elastic-certs-migrate`: exited `0`
+- `elastic-certs-setup`: exited `0`
+- `openssl-helper`: exited `0`
+- `elastic-init`: exited `0`
+- `elasticsearch`: healthy
+- `logstash`: healthy
+- `kibana`: healthy
+- `docker-socket-proxy`: healthy
+- `filebeat`: healthy
+
+## Validate Logstash and Filebeat
+
+Validate the Logstash pipeline without starting the normal service command:
+
+```bash
+docker compose -f docker-compose.elastic.yml run --rm --no-deps \
+  --entrypoint /bin/bash logstash -ec '
+    export LOGSTASH_PASSWORD="$(cat /run/secrets/logstash_password)"
+    /usr/share/logstash/bin/logstash \
+      --config.test_and_exit \
+      -f /usr/share/logstash/pipeline/logstash.conf
+  '
+```
+
+Validate Filebeat configuration and its TLS output:
+
+```bash
+docker compose -f docker-compose.elastic.yml exec filebeat \
+  filebeat test config -e --strict.perms=false
+
+docker compose -f docker-compose.elastic.yml exec filebeat \
+  filebeat test output -e --strict.perms=false
+```
+
+## End-to-end ingestion verification
+
+Run the supplied synthetic verification after the stack is healthy:
+
+```bash
+./elk/verify-ingestion.sh
+```
+
+The script creates two temporary, labeled Docker containers:
+
+- one emits valid Hirkanet application JSON;
+- one emits malformed application output.
+
+It verifies that:
+
+- valid JSON appears in `hirkanet-logs-*`;
+- valid JSON does not appear in `hirkanet-dead-letter-*`;
+- malformed JSON does not appear in normal indices;
+- malformed JSON appears in `hirkanet-dead-letter-*`.
 
 ## TLS topology
 
 ```text
-Filebeat --TLS--> Logstash --TLS/HTTPS--> Elasticsearch
-                                  ^
-Kibana -----------HTTPS-----------|
-Browser ----------HTTPS----------> Kibana
+Filebeat --TLS/full verification--> Logstash
+Logstash --HTTPS/full verification--> Elasticsearch
+Kibana   --HTTPS/full verification--> Elasticsearch
+Browser  --HTTPS--------------------> Kibana
+CLI      --HTTPS--------------------> Elasticsearch
 ```
 
-Certificates are stored only in the `elastic_certs` Docker volume. Elasticsearch, Logstash, Kibana, and Filebeat mount that volume read-only.
+Certificate SANs include the Docker service names and localhost addresses used
+by health checks:
+
+| Certificate | DNS SANs | IP SAN |
+|---|---|---|
+| Elasticsearch | `elasticsearch`, `localhost` | `127.0.0.1` |
+| Kibana | `kibana`, `localhost` | `127.0.0.1` |
+| Logstash | `logstash`, `localhost` | `127.0.0.1` |
 
 ## Access Elasticsearch
 
-Export only the CA certificate when command-line clients need to trust the stack:
+Elasticsearch is published only on host loopback:
+
+```text
+https://127.0.0.1:9200
+```
+
+Export the public CA:
 
 ```bash
 docker compose -f docker-compose.elastic.yml cp \
@@ -80,83 +289,109 @@ docker compose -f docker-compose.elastic.yml cp \
   ./hirkanet-elastic-ca.crt
 ```
 
-Then query Elasticsearch:
+Query cluster health:
 
 ```bash
 curl --cacert ./hirkanet-elastic-ca.crt \
   -u "elastic:$(cat secrets/elastic_password)" \
-  https://127.0.0.1:9200/_cluster/health?pretty
+  'https://127.0.0.1:9200/_cluster/health?pretty'
 ```
 
-The CA certificate is public trust material. Never export or distribute `ca.key` or service private keys.
+Never export `ca.key` or a service private key.
 
 ## Access Kibana
 
-Open:
+Kibana is published only on host loopback:
 
 ```text
 https://127.0.0.1:5601
 ```
 
-Sign in as `elastic` using the value stored in `secrets/elastic_password`.
+Sign in as `elastic` using `secrets/elastic_password`. Import
+`hirkanet-elastic-ca.crt` into the local trust store to remove browser trust
+warnings.
 
-The browser will not trust Hirkanet's private CA by default. Import `hirkanet-elastic-ca.crt` into the local trust store, or accept the warning only in a controlled development environment.
-
-Create a data view for:
+Create data views for:
 
 ```text
 hirkanet-logs*
+hirkanet-dead-letter*
 ```
 
 Use `@timestamp` as the time field.
 
 ## ILM behavior
 
-Normal events are written through the `hirkanet-logs` alias. Elasticsearch rolls the index when either condition is reached:
+Logstash explicitly writes through rollover aliases:
 
-- Primary shard size reaches 10 GB
-- Index age reaches one day
+- `hirkanet-logs`
+- `hirkanet-dead-letter`
 
-Rolled indices are deleted after 30 days.
+Normal logs:
 
-Verify the lifecycle configuration:
+- rollover at 10 GB primary-shard size or one day;
+- delete after 30 days.
+
+Dead-letter logs:
+
+- rollover at 5 GB primary-shard size or seven days;
+- delete after 30 days.
+
+Verify:
 
 ```bash
 curl --cacert ./hirkanet-elastic-ca.crt \
   -u "elastic:$(cat secrets/elastic_password)" \
-  https://127.0.0.1:9200/_ilm/policy/hirkanet-logs-policy?pretty
+  'https://127.0.0.1:9200/_alias/hirkanet-logs?pretty'
 
 curl --cacert ./hirkanet-elastic-ca.crt \
   -u "elastic:$(cat secrets/elastic_password)" \
-  https://127.0.0.1:9200/_alias/hirkanet-logs?pretty
-
-curl --cacert ./hirkanet-elastic-ca.crt \
-  -u "elastic:$(cat secrets/elastic_password)" \
-  https://127.0.0.1:9200/hirkanet-logs-*/_ilm/explain?pretty
+  'https://127.0.0.1:9200/hirkanet-logs-*/_ilm/explain?pretty'
 ```
 
-Application JSON parse failures are routed through the separate `hirkanet-dead-letter` rollover alias. The `hirkanet-dead-letter-policy` rolls over at 5 GB or 7 days and deletes rolled indices after 30 days, independently of normal application logs.
+## Restricted Docker metadata access
 
-## Certificate lifecycle and explicit rotation
+Filebeat no longer mounts `/var/run/docker.sock` directly. It calls
+`docker-socket-proxy` on an internal-only network.
 
-### Normal startup behavior
+The proxy permits only read-only Docker API operations required for metadata:
 
-The `elastic-certs-setup` service never silently replaces an existing trust root.
+- containers
+- events
+- info
+- ping
+- version
 
-- If both `ca/ca.crt` and `ca/ca.key` are absent, the stack treats this as first-time bootstrap and creates the initial CA.
-- If both CA files exist, they are reused.
-- If only one CA file exists, startup fails. Restore the missing CA material from backup or perform an explicit trust-root rotation.
-- If a service certificate is missing, the service certificate set is reissued using the existing CA. The CA itself is not replaced.
+HTTP POST requests and all other Docker API sections remain denied. The proxy
+port is not published to the host.
 
-The CA private key remains inside the protected `elastic_certs` Docker volume with mode `0600`. Do not export it to clients. Back up the Docker volume using an encrypted, access-controlled backup process.
+On SELinux-enforcing hosts, the Docker socket mount may require an appropriate
+label or local policy. Do not solve this by publishing proxy port `2375`.
 
-### Service-certificate renewal without CA rotation
+## Service-certificate renewal without CA rotation
 
-To renew service certificates while preserving client trust, remove only the service-certificate directories from the certificate volume, retain `ca/ca.crt` and `ca/ca.key`, and rerun `elastic-certs-setup`. This operation should be performed under change control and after a verified backup.
+The certificate setup job never silently replaces an existing CA.
 
-### Explicit trust-root rotation
+To reissue service certificates while preserving client trust:
 
-Trust-root rotation is disruptive: all previously exported CA certificates become invalid. Use the supplied guarded command only after scheduling client redistribution:
+```bash
+docker compose -f docker-compose.elastic.yml down
+
+docker volume rm \
+  hirkanet-observability_elasticsearch_certs \
+  hirkanet-observability_kibana_certs \
+  hirkanet-observability_logstash_certs
+
+docker compose -f docker-compose.elastic.yml up -d --build
+```
+
+Do not remove `hirkanet-observability_elastic_ca_private` or
+`hirkanet-observability_elastic_ca_public` during service-certificate renewal.
+
+## Explicit trust-root rotation
+
+Trust-root rotation is disruptive. It invalidates every previously exported CA
+certificate.
 
 ```bash
 ./elk/rotate-elastic-ca.sh --confirm-trust-root-rotation
@@ -164,63 +399,62 @@ Trust-root rotation is disruptive: all previously exported CA certificates becom
 
 The script:
 
-1. Requires the exact confirmation flag.
-2. Saves the old public CA and SHA-256 fingerprint when available.
-3. Stops the Elastic services.
-4. Removes the `elastic_certs` volume explicitly.
-5. Creates a new CA and new service certificates.
-6. Exports the new public CA and fingerprint.
-7. Prints the required client-migration steps.
+1. backs up the old public CA and SHA-256 fingerprint when available;
+2. removes containers, not data volumes;
+3. removes only certificate volumes, including the legacy certificate volume;
+4. rebuilds and starts the stack;
+5. waits for Elasticsearch health;
+6. exports the new public CA and fingerprint;
+7. prints client redistribution requirements.
 
-After rotation, redistribute the new CA to browsers, command-line clients, monitoring systems, and integrations. Verify all stack health checks, remove the old CA only after migration, and record the new fingerprint in change management.
+Never use `docker compose ... down -v` for certificate rotation because it also
+removes Elasticsearch, Kibana, Logstash, and Filebeat data volumes.
 
-Never rotate the CA merely because a service certificate is missing. Reissue service certificates from the existing CA instead.
+## Troubleshooting sequence
 
-## Troubleshooting
-
-### Certificate setup fails
-
-```bash
-docker compose -f docker-compose.elastic.yml logs elastic-certs-setup
-```
-
-Confirm the certificate volume is writable and that all Elastic images use the same `STACK_VERSION`. If the log reports incomplete CA material, do not delete the volume casually; restore the CA backup or run the documented explicit trust-root rotation procedure.
-
-### Logstash cannot connect to Elasticsearch
+### Certificate jobs fail
 
 ```bash
-docker compose -f docker-compose.elastic.yml logs logstash elastic-init elasticsearch
+docker compose -f docker-compose.elastic.yml logs --tail=200 \
+  elastic-certs-migrate elastic-certs-setup openssl-helper
 ```
 
-Check `secrets/logstash_password`, its Docker secret mount, CA mounts, and the `logstash_internal` user initialization.
+An incomplete CA is intentionally a hard failure. Restore the missing CA file
+or perform an explicit trust-root rotation.
 
-### Filebeat cannot connect to Logstash
+### Elasticsearch fails
 
 ```bash
-docker compose -f docker-compose.elastic.yml logs filebeat logstash
+sysctl vm.max_map_count
+docker compose -f docker-compose.elastic.yml logs --tail=200 elasticsearch
 ```
 
-Confirm both services mount `elastic_certs` and that Logstash is listening on TLS port `5044`.
+Confirm the value is `1048576`, secrets are non-empty, and certificate jobs
+completed successfully.
 
-### ILM does not roll over
+### Logstash fails
 
-Confirm that Logstash writes to the `hirkanet-logs` alias rather than directly to a date-based index, then inspect `_ilm/explain` using the command above.
+```bash
+docker compose -f docker-compose.elastic.yml logs --tail=200 elastic-init logstash
+```
 
-## Full TLS hostname verification
+Confirm `elastic-init` created `logstash_internal`, the Logstash secret is
+mounted, and the PKCS#8 helper exited successfully.
 
-All supported Elastic connections use full certificate verification. A trusted CA alone is not sufficient: the certificate identity must also match the hostname used by the client.
+### Filebeat fails
 
-The generated certificate SANs and runtime hostnames are aligned as follows:
+```bash
+docker compose -f docker-compose.elastic.yml logs --tail=200 \
+  docker-socket-proxy filebeat logstash
+```
 
-| Connection | Client hostname | Required certificate SAN |
-|---|---|---|
-| Filebeat → Logstash | `logstash` | DNS `logstash` |
-| Logstash → Elasticsearch | `elasticsearch` | DNS `elasticsearch` |
-| Kibana → Elasticsearch | `elasticsearch` | DNS `elasticsearch` |
-| Elastic initialization → Elasticsearch | `elasticsearch` | DNS `elasticsearch` |
-| Local Elasticsearch health check | `127.0.0.1` | IP `127.0.0.1` |
-| Local Kibana health check | `127.0.0.1` | IP `127.0.0.1` |
+Confirm Filebeat can reach both `docker-socket-proxy:2375` and
+`logstash:5044` on their internal networks.
 
-The configuration therefore uses `full` verification for Filebeat, Logstash's Elasticsearch outputs, Kibana, and Elasticsearch transport TLS. Do not replace service DNS names with arbitrary aliases or container IP addresses unless those identities are added to the corresponding certificate SANs and the certificates are deliberately reissued.
+## Primary references
 
-A hostname mismatch must be corrected by fixing the endpoint name or reissuing the service certificate from the existing CA. Do not weaken verification to `certificate` or `none` as a workaround.
+- Elastic production Docker requirements: https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-docker-prod
+- Logstash Elasticsearch output and ILM: https://www.elastic.co/docs/reference/logstash/plugins/plugins-outputs-elasticsearch
+- Filebeat Docker metadata processor: https://www.elastic.co/docs/reference/beats/filebeat/add-docker-metadata
+- Kibana encrypted saved objects: https://www.elastic.co/docs/deploy-manage/security/secure-saved-objects
+- Docker socket proxy: https://github.com/Tecnativa/docker-socket-proxy

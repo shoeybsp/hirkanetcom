@@ -28,14 +28,16 @@ def test_kibana_and_transport_use_full_verification():
     compose = load_compose()
     es_env = compose["services"]["elasticsearch"]["environment"]
     kibana_env = compose["services"]["kibana"]["environment"]
+
     assert es_env["xpack.security.transport.ssl.verification_mode"] == "full"
     assert kibana_env["ELASTICSEARCH_SSL_VERIFICATIONMODE"] == "full"
     assert kibana_env["ELASTICSEARCH_HOSTS"] == '["https://elasticsearch:9200"]'
 
 
 def test_certificates_cover_runtime_service_names_and_local_health_hosts():
-    compose_text = (ROOT / "docker-compose.elastic.yml").read_text(encoding="utf-8")
-    assert "dns: [elasticsearch, localhost]" in compose_text
-    assert "dns: [kibana, localhost]" in compose_text
-    assert "dns: [logstash, localhost]" in compose_text
-    assert compose_text.count("ip: [127.0.0.1]") >= 3
+    setup_script = (ROOT / "elk/setup-certs.sh").read_text(encoding="utf-8")
+
+    assert "dns: [elasticsearch, localhost]" in setup_script
+    assert "dns: [kibana, localhost]" in setup_script
+    assert "dns: [logstash, localhost]" in setup_script
+    assert setup_script.count("ip: [127.0.0.1]") == 3

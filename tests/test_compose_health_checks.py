@@ -5,7 +5,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSE = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
-ELASTIC_COMPOSE = yaml.safe_load((ROOT / "docker-compose.elastic.yml").read_text(encoding="utf-8"))
+ELASTIC_COMPOSE = yaml.safe_load(
+    (ROOT / "docker-compose.elastic.yml").read_text(encoding="utf-8")
+)
 SERVICES = {**APP_COMPOSE["services"], **ELASTIC_COMPOSE["services"]}
 
 
@@ -16,8 +18,18 @@ def health_command(service_name: str) -> str:
 
 
 def test_runtime_services_have_healthchecks():
-    for service_name in ("db", "app", "elasticsearch", "logstash", "kibana", "filebeat"):
-        assert "healthcheck" in SERVICES[service_name], f"{service_name} must have a healthcheck"
+    for service_name in (
+        "db",
+        "app",
+        "elasticsearch",
+        "logstash",
+        "kibana",
+        "docker-socket-proxy",
+        "filebeat",
+    ):
+        assert "healthcheck" in SERVICES[service_name], (
+            f"{service_name} must have a healthcheck"
+        )
 
 
 def test_postgres_healthcheck_executes_authenticated_query():
@@ -54,6 +66,12 @@ def test_kibana_healthcheck_requires_available_status():
     command = health_command("kibana")
     assert "/api/status" in command
     assert '"level":"available"' in command
+
+
+def test_socket_proxy_healthcheck_uses_read_only_ping_endpoint():
+    command = health_command("docker-socket-proxy")
+    assert "/_ping" in command
+    assert SERVICES["docker-socket-proxy"]["environment"]["POST"] == "0"
 
 
 def test_filebeat_healthcheck_validates_tls_output_connection():
