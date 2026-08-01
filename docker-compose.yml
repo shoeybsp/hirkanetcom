@@ -1,49 +1,51 @@
 name: hirkanet-app
-x-docker-logging: &id001
+
+x-docker-logging: &default-logging
   driver: json-file
   options:
     max-size: 10m
-    max-file: '5'
+    max-file: "5"
+
 services:
   db:
+    ports:
+      - "127.0.0.1:5432:5432"
     image: postgres:16-alpine
     restart: unless-stopped
-    cpus: '1.0'
+    cpus: "1.0"
     mem_limit: 768m
     mem_reservation: 256m
     pids_limit: 256
     labels:
       hirkanet_log_role: database
     env_file:
-    - .env
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      TZ: ${TZ:-Europe/Riga}
-    secrets:
-    - postgres_password
+      TZ: Europe/Riga
     volumes:
-    - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test:
-      - CMD-SHELL
-      - PGPASSWORD="$$(cat /run/secrets/postgres_password)" psql --host=127.0.0.1
-        --username="$${POSTGRES_USER}" --dbname="$${POSTGRES_DB}" --no-password --command='SELECT
-        1' >/dev/null
+        - CMD-SHELL
+        - >-
+          pg_isready
+          --host=127.0.0.1
+          --username="$${POSTGRES_USER}"
+          --dbname="$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 10s
     networks:
-    - app-db
-    logging: *id001
+      - app-db
+    logging: *default-logging
+
   migrate:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: 'no'
-    cpus: '0.5'
+    restart: "no"
+    cpus: "0.5"
     mem_limit: 384m
     mem_reservation: 96m
     pids_limit: 128
@@ -51,119 +53,86 @@ services:
       db:
         condition: service_healthy
     env_file:
-    - .env
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_HOST: db
-      POSTGRES_PORT: '5432'
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
-      SECRET_KEY_FILE: /run/secrets/flask_secret_key
-      APP_ENV: ${APP_ENV:-production}
-      TRUST_PROXY_HEADERS: 'false'
-      SERVICE_NAME: ${SERVICE_NAME:-hirkanet-migrate}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      TZ: ${TZ:-Europe/Riga}
-    secrets:
-    - postgres_password
-    - flask_secret_key
-    - bootstrap_admin_password
+      POSTGRES_PORT: "5432"
+      TRUST_PROXY_HEADERS: "false"
+      SERVICE_NAME: hirkanet-migrate
     read_only: true
     security_opt:
-    - no-new-privileges:true
+      - no-new-privileges:true
     cap_drop:
-    - ALL
+      - ALL
     tmpfs:
-    - /tmp:size=32m,mode=1777,noexec,nosuid,nodev
+      - /tmp:size=32m,mode=1777,noexec,nosuid,nodev
     command:
-    - /bin/sh
-    - -ec
-    - flask --app api.app db upgrade && flask --app api.app seed-defaults
+      - /bin/sh
+      - -ec
+      - flask --app api.app db upgrade && flask --app api.app seed-defaults
     networks:
-    - app-db
-    logging: *id001
+      - app-db
+    logging: *default-logging
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    cpus: '0.75'
+    cpus: "0.75"
     mem_limit: 512m
     mem_reservation: 128m
+    pids_limit: 256
     labels:
       hirkanet_log_role: application
     depends_on:
       migrate:
         condition: service_completed_successfully
     env_file:
-    - .env
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_HOST: db
-      POSTGRES_PORT: '5432'
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      SECRET_KEY_FILE: /run/secrets/flask_secret_key
-      BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_admin_password
-      APP_ENV: ${APP_ENV:-production}
-      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-true}
-      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-hirkanet.com,www.hirkanet.com,localhost,127.0.0.1}
-      SERVICE_NAME: ${SERVICE_NAME:-hirkanet}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      TZ: ${TZ:-Europe/Riga}
-    secrets:
-    - postgres_password
-    - flask_secret_key
-    - bootstrap_admin_password
+      POSTGRES_PORT: "5432"
     ports:
-    - 127.0.0.1:5000:5000
+      - 127.0.0.1:5000:5000
     init: true
     read_only: true
     security_opt:
-    - no-new-privileges:true
+      - no-new-privileges:true
     cap_drop:
-    - ALL
-    pids_limit: 256
+      - ALL
     tmpfs:
-    - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
     volumes:
-    - ./data:/app/data
-    - ./uploads:/app/uploads
-    - ./static/uploads:/app/static/uploads
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./static/uploads:/app/static/uploads
     command:
-    - gunicorn
-    - --config
-    - gunicorn.conf.py
-    - api.app:app
+      - gunicorn
+      - --config
+      - gunicorn.conf.py
+      - api.app:app
     stop_grace_period: 30s
     healthcheck:
       test:
-      - CMD-SHELL
-      - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/readyz',
-        timeout=3)"
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/readyz', timeout=3)"
       interval: 15s
       timeout: 5s
       retries: 20
       start_period: 30s
     networks:
-    - app-db
-    - frontend
-    logging: *id001
-secrets:
-  postgres_password:
-    file: ${SECRETS_DIR:-./secrets}/postgres_password
-  flask_secret_key:
-    file: ${SECRETS_DIR:-./secrets}/flask_secret_key
-  bootstrap_admin_password:
-    file: ${SECRETS_DIR:-./secrets}/bootstrap_admin_password
+      - app-db
+      - frontend
+    logging: *default-logging
+
 volumes:
-  postgres_data: null
+  postgres_data:
+    name: hirkanet-app_postgres_data
+
 networks:
   app-db:
     driver: bridge
-    internal: true
   frontend:
     driver: bridge
