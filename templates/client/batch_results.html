@@ -16,9 +16,20 @@
         <div class="stl-user-nav">
             <a href="{{ url_for('client.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('client.policy_evaluation') }}" class="stl-nav-link">New Evaluation</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+
+            </form>
         </div>
     </header>
+
+
+    <div class="alert alert-warning" role="alert">
+        <strong>Decision-support only:</strong> These are heuristic policy recommendations, not FortiGate packet-flow simulation results. Confirm policy order, deny rules, NAT, routing, schedules, identity, zones, VDOM context, and runtime reachability before implementation.
+    </div>
 
     {% if results %}
     <div class="card stl-card">
@@ -33,7 +44,7 @@
                         <th>Source</th>
                         <th>Destination</th>
                         <th>Port</th>
-                        <th>Top Suggestions</th>
+                        <th>Top Recommended Candidates</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -58,7 +69,7 @@
                                 {% endfor %}
                             </ul>
                             {% else %}
-                            <span class="text-muted">No match</span>
+                            <span class="text-muted">No candidate recommended</span>
                             {% endif %}
                         </td>
                     </tr>

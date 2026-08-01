@@ -29,7 +29,13 @@
                 <span class="stl-username">{{ current_user.username }}</span>
             </span>
             <a href="{{ url_for('profile') }}" class="stl-nav-link" title="Profile">Profile</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</button>
+
+            </form>
         </div>
     </header>
 
@@ -42,6 +48,7 @@
                 <div class="card-body">
 
                     <form action="/results" method="POST" class="stl-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <div class="mb-3">
                             <label class="form-label fw-semibold label-color">
@@ -133,6 +140,7 @@
                     </p>
 
                     <form action="/batch_results" method="POST" enctype="multipart/form-data" class="stl-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label class="form-label fw-semibold label-color">
                                 CSV File

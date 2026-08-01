@@ -1,0 +1,5 @@
+Hirkanet database migrations
+============================
+
+Use Flask-Migrate/Alembic for every schema change. Do not call db.create_all()
+in application startup code.

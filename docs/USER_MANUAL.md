@@ -80,6 +80,13 @@ If you do not have access to any service, you will see a message saying that no 
 
 ## 5. Using the Policy Evaluation service
 
+### Important: what the results mean
+
+Policy Evaluation provides heuristic recommendations. A high score means a collected policy appears similar to the submitted request under Hirkanet's coverage, interface, and least-privilege scoring rules. It is not a definitive FortiGate allow/deny decision and it does not simulate the complete packet-processing path.
+
+Before implementing a recommendation, an administrator or firewall engineer must verify the full FortiGate configuration, including policy order, deny rules, NAT, schedules, routing and policy routes, interfaces and zones, identity controls, VDOM context, and end-to-end reachability.
+
+
 ### Single request evaluation
 
 On the Policy Evaluation page, enter:
@@ -92,8 +99,8 @@ You can select values from the available address and service lists.
 
 After submitting the form, the app shows:
 
-- the best matching policy
-- a ranked list of matching policies
+- the top recommended policy candidate
+- a heuristic ranked list of policy candidates
 - source, destination, and service match counts
 - interface information
 - penalty information for broad rules
@@ -110,7 +117,7 @@ source,destination,port
 192.168.20.10,10.20.20.20,tcp-80
 ```
 
-The app evaluates each row and shows the top suggestions for each request.
+The app evaluates each row and shows the top heuristic recommendations for each request. These recommendations still require FortiGate review and traffic-path validation.
 
 ## 6. What happens if a user has no access?
 

@@ -23,7 +23,13 @@
                 </span>
                 <span class="stl-username">{{ current_user.username }}</span>
             </span>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</button>
+
+            </form>
         </div>
     </header>
 

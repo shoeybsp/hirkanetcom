@@ -19,7 +19,13 @@
             <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('admin.blog_category_list') }}" class="stl-nav-link">Blog Categories</a>
             <a href="{{ url_for('admin.profile') }}" class="stl-nav-link">Profile</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+
+            </form>
         </div>
     </header>
 
@@ -80,6 +86,7 @@
                         <td class="text-nowrap">
                             <a href="{{ url_for('admin.blog_post_edit', post_id=post.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
                             <form action="{{ url_for('admin.blog_post_toggle_status', post_id=post.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 {% if post.status == 'published' %}
                                 <button type="submit" class="btn btn-sm btn-outline-secondary">Unpublish</button>
                                 {% else %}
@@ -87,6 +94,7 @@
                                 {% endif %}
                             </form>
                             <form action="{{ url_for('admin.blog_post_delete', post_id=post.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this post? This cannot be undone.')">Delete</button>
                             </form>
                         </td>

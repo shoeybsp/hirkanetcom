@@ -15,12 +15,21 @@ from flask import (
 from werkzeug.utils import secure_filename
 from flask_login import login_required, current_user
 from models import db, User, Service, Subscription, BlogCategory, BlogPost, slugify
+from database_transactions import commit_transaction
 from security import hash_password, verify_password
+from validation import ValidationError
+from validation.admin import (
+    validate_blog_post,
+    validate_category,
+    validate_password_change,
+    validate_service,
+    validate_subscription_ids,
+    validate_user,
+)
+from validation.uploads import validate_cover_image
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 logger = logging.getLogger(__name__)
-
-ALLOWED_COVER_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
 def admin_required(f):
@@ -80,21 +89,12 @@ def user_list():
 def user_create():
     """Create a new user."""
     if request.method == "POST":
-        username = request.form.get("username", "").strip().lower()
-        password = request.form.get("password", "")
-        role = request.form.get("role", "client")
-
-        if not username:
-            flash("Username is required.", "error")
+        try:
+            values = validate_user(request.form, password_required=True)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
             return render_template("admin/user_form.html", user=None)
-
-        if not password or len(password) < 12:
-            flash("Password must be at least 12 characters.", "error")
-            return render_template("admin/user_form.html", user=None)
-
-        if role not in ("admin", "client"):
-            flash("Invalid role.", "error")
-            return render_template("admin/user_form.html", user=None)
+        username, password, role = values.username, values.password, values.role
 
         existing = User.query.filter_by(username=username).first()
         if existing:
@@ -102,7 +102,7 @@ def user_create():
             return render_template("admin/user_form.html", user=None)
         user = User(username=username, password_hash=hash_password(password), salt="", role=role)
         db.session.add(user)
-        db.session.commit()
+        commit_transaction("admin database change")
         logger.info("User created", extra={"event_type":"audit_user_created","actor_user_id":str(current_user.id),"target_user_id":str(user.id),"role":role})
 
         flash(f"User '{username}' created successfully.", "success")
@@ -118,17 +118,12 @@ def user_edit(user_id):
     user = User.query.get_or_404(user_id)
 
     if request.method == "POST":
-        username = request.form.get("username", "").strip().lower()
-        password = request.form.get("password", "")
-        role = request.form.get("role", "client")
-
-        if not username:
-            flash("Username is required.", "error")
+        try:
+            values = validate_user(request.form, password_required=False)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
             return render_template("admin/user_form.html", user=user)
-
-        if role not in ("admin", "client"):
-            flash("Invalid role.", "error")
-            return render_template("admin/user_form.html", user=user)
+        username, password, role = values.username, values.password, values.role
 
         # Check if username is taken by another user
         existing = User.query.filter(User.username == username, User.id != user_id).first()
@@ -140,13 +135,10 @@ def user_edit(user_id):
         user.role = role
 
         if password:
-            if len(password) < 12:
-                flash("Password must be at least 12 characters.", "error")
-                return render_template("admin/user_form.html", user=user)
             user.password_hash = hash_password(password)
             user.salt = ""
 
-        db.session.commit()
+        commit_transaction("admin database change")
         flash(f"User '{username}' updated successfully.", "success")
         return redirect(url_for("admin.user_list"))
 
@@ -163,11 +155,9 @@ def user_delete(user_id):
         flash("You cannot delete yourself.", "error")
         return redirect(url_for("admin.user_list"))
 
-    # Also remove their subscriptions
-    Subscription.query.filter_by(user_id=user.id).delete()
     target_id=str(user.id); target_username=user.username
     db.session.delete(user)
-    db.session.commit()
+    commit_transaction("admin database change")
     logger.info("User deleted", extra={"event_type":"audit_user_deleted","actor_user_id":str(current_user.id),"target_user_id":target_id,"target_username":target_username})
 
     flash(f"User '{user.username}' deleted.", "success")
@@ -187,7 +177,14 @@ def user_subscriptions(user_id):
     services = Service.query.order_by(Service.name).all()
 
     if request.method == "POST":
-        selected_service_ids = set(int(v) for v in request.form.getlist("services"))
+        try:
+            selected_service_ids = validate_subscription_ids(
+                request.form.getlist("services"),
+                allowed_ids={service.id for service in services},
+            )
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            return render_template("admin/user_subscriptions.html", user=user, services=services)
 
         # Remove unselected subscriptions
         for sub in user.subscriptions:
@@ -201,7 +198,7 @@ def user_subscriptions(user_id):
                 sub = Subscription(user_id=user.id, service_id=svc_id, is_active=True)
                 db.session.add(sub)
 
-        db.session.commit()
+        commit_transaction("admin database change")
         flash(f"Subscriptions for '{user.username}' updated.", "success")
         return redirect(url_for("admin.user_list"))
 
@@ -230,14 +227,15 @@ def service_list():
 def service_create():
     """Create a new service."""
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-        service_type = request.form.get("service_type", "").strip()
-        is_active = request.form.get("is_active") == "on"
-
-        if not name or not service_type:
-            flash("Name and Service Type are required.", "error")
+        try:
+            values = validate_service(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
             return render_template("admin/service_form.html", service=None)
+        name = values.name
+        description = values.description
+        service_type = values.service_type
+        is_active = values.is_active
 
         existing = Service.query.filter_by(name=name).first()
         if existing:
@@ -251,7 +249,7 @@ def service_create():
             is_active=is_active,
         )
         db.session.add(svc)
-        db.session.commit()
+        commit_transaction("admin database change")
 
         flash(f"Service '{name}' created.", "success")
         return redirect(url_for("admin.service_list"))
@@ -266,14 +264,15 @@ def service_edit(service_id):
     svc = Service.query.get_or_404(service_id)
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-        service_type = request.form.get("service_type", "").strip()
-        is_active = request.form.get("is_active") == "on"
-
-        if not name or not service_type:
-            flash("Name and Service Type are required.", "error")
+        try:
+            values = validate_service(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
             return render_template("admin/service_form.html", service=svc)
+        name = values.name
+        description = values.description
+        service_type = values.service_type
+        is_active = values.is_active
 
         existing = Service.query.filter(
             Service.name == name, Service.id != service_id
@@ -286,7 +285,7 @@ def service_edit(service_id):
         svc.description = description
         svc.service_type = service_type
         svc.is_active = is_active
-        db.session.commit()
+        commit_transaction("admin database change")
 
         flash(f"Service '{name}' updated.", "success")
         return redirect(url_for("admin.service_list"))
@@ -300,10 +299,8 @@ def service_delete(service_id):
     """Delete a service."""
     svc = Service.query.get_or_404(service_id)
 
-    # Remove related subscriptions first
-    Subscription.query.filter_by(service_id=svc.id).delete()
     db.session.delete(svc)
-    db.session.commit()
+    commit_transaction("admin database change")
 
     flash(f"Service '{svc.name}' deleted.", "success")
     return redirect(url_for("admin.service_list"))
@@ -327,12 +324,12 @@ def blog_category_list():
 def blog_category_create():
     """Create a new blog category."""
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-
-        if not name:
-            flash("Category name is required.", "error")
+        try:
+            values = validate_category(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
             return render_template("admin/blog_category_form.html", category=None)
+        name, description = values.name, values.description
 
         slug = slugify(name)
         if BlogCategory.query.filter_by(slug=slug).first():
@@ -341,7 +338,7 @@ def blog_category_create():
 
         cat = BlogCategory(name=name, slug=slug, description=description)
         db.session.add(cat)
-        db.session.commit()
+        commit_transaction("admin database change")
 
         flash(f"Category '{name}' created.", "success")
         return redirect(url_for("admin.blog_category_list"))
@@ -356,12 +353,12 @@ def blog_category_edit(category_id):
     cat = BlogCategory.query.get_or_404(category_id)
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-
-        if not name:
-            flash("Category name is required.", "error")
+        try:
+            values = validate_category(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
             return render_template("admin/blog_category_form.html", category=cat)
+        name, description = values.name, values.description
 
         slug = slugify(name)
         existing = BlogCategory.query.filter(
@@ -374,7 +371,7 @@ def blog_category_edit(category_id):
         cat.name = name
         cat.slug = slug
         cat.description = description
-        db.session.commit()
+        commit_transaction("admin database change")
 
         flash(f"Category '{name}' updated.", "success")
         return redirect(url_for("admin.blog_category_list"))
@@ -388,9 +385,8 @@ def blog_category_delete(category_id):
     """Delete a blog category. Posts in it become uncategorized, not deleted."""
     cat = BlogCategory.query.get_or_404(category_id)
 
-    BlogPost.query.filter_by(category_id=cat.id).update({"category_id": None})
     db.session.delete(cat)
-    db.session.commit()
+    commit_transaction("admin database change")
 
     flash(f"Category '{cat.name}' deleted. Its posts are now uncategorized.", "success")
     return redirect(url_for("admin.blog_category_list"))
@@ -402,15 +398,10 @@ def blog_category_delete(category_id):
 
 
 def _save_cover_image(file_storage):
-    """Save an uploaded cover image and return its static-relative URL, or None."""
-    if not file_storage or not file_storage.filename:
+    """Validate and save an uploaded cover image."""
+    ext = validate_cover_image(file_storage)
+    if ext is None:
         return None
-
-    ext = file_storage.filename.rsplit(".", 1)[-1].lower() if "." in file_storage.filename else ""
-    if ext not in ALLOWED_COVER_EXTENSIONS:
-        flash("Cover image must be a PNG, JPG, GIF, or WEBP file.", "error")
-        return None
-
     filename = secure_filename(f"{uuid.uuid4().hex}.{ext}")
     upload_dir = os.path.join(current_app.static_folder, "uploads", "blog")
     os.makedirs(upload_dir, exist_ok=True)
@@ -439,20 +430,16 @@ def blog_post_create():
     categories = BlogCategory.query.order_by(BlogCategory.name).all()
 
     if request.method == "POST":
-        title = request.form.get("title", "").strip()
-        excerpt = request.form.get("excerpt", "").strip()
-        content = request.form.get("content", "").strip()
-        status = request.form.get("status", "draft")
-        category_id = request.form.get("category_id") or None
-
-        if not title or not content:
-            flash("Title and content are required.", "error")
-            return render_template(
-                "admin/blog_post_form.html", post=None, categories=categories
+        try:
+            values = validate_blog_post(
+                request.form, allowed_category_ids={category.id for category in categories}
             )
-
-        if status not in ("draft", "published"):
-            status = "draft"
+            cover_image = _save_cover_image(request.files.get("cover_image"))
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            return render_template("admin/blog_post_form.html", post=None, categories=categories)
+        title, excerpt, content = values.title, values.excerpt, values.content
+        status, category_id = values.status, values.category_id
 
         slug = slugify(title)
         base_slug = slug
@@ -461,21 +448,19 @@ def blog_post_create():
             slug = f"{base_slug}-{suffix}"
             suffix += 1
 
-        cover_image = _save_cover_image(request.files.get("cover_image"))
-
         post = BlogPost(
             title=title,
             slug=slug,
             excerpt=excerpt,
             content=content,
             status=status,
-            category_id=int(category_id) if category_id else None,
+            category_id=category_id,
             author_id=current_user.id,
             cover_image=cover_image or "",
             published_at=datetime.now(timezone.utc) if status == "published" else None,
         )
         db.session.add(post)
-        db.session.commit()
+        commit_transaction("admin database change")
 
         flash(f"Post '{title}' created.", "success")
         return redirect(url_for("admin.blog_post_list"))
@@ -491,21 +476,16 @@ def blog_post_edit(post_id):
     categories = BlogCategory.query.order_by(BlogCategory.name).all()
 
     if request.method == "POST":
-        title = request.form.get("title", "").strip()
-        excerpt = request.form.get("excerpt", "").strip()
-        content = request.form.get("content", "").strip()
-        status = request.form.get("status", "draft")
-        category_id = request.form.get("category_id") or None
-        remove_cover = request.form.get("remove_cover") == "on"
-
-        if not title or not content:
-            flash("Title and content are required.", "error")
-            return render_template(
-                "admin/blog_post_form.html", post=post, categories=categories
+        try:
+            values = validate_blog_post(
+                request.form, allowed_category_ids={category.id for category in categories}
             )
-
-        if status not in ("draft", "published"):
-            status = "draft"
+            new_cover = _save_cover_image(request.files.get("cover_image"))
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            return render_template("admin/blog_post_form.html", post=post, categories=categories)
+        title, excerpt, content = values.title, values.excerpt, values.content
+        status, category_id, remove_cover = values.status, values.category_id, values.remove_cover
 
         # Re-slug only if the title actually changed, to keep existing links stable.
         if title != post.title:
@@ -517,7 +497,6 @@ def blog_post_edit(post_id):
                 suffix += 1
             post.slug = slug
 
-        new_cover = _save_cover_image(request.files.get("cover_image"))
         if new_cover:
             post.cover_image = new_cover
         elif remove_cover:
@@ -528,14 +507,14 @@ def blog_post_edit(post_id):
         post.excerpt = excerpt
         post.content = content
         post.status = status
-        post.category_id = int(category_id) if category_id else None
+        post.category_id = category_id
 
         if status == "published" and not was_published:
             post.published_at = datetime.now(timezone.utc)
         elif status == "draft":
             post.published_at = None
 
-        db.session.commit()
+        commit_transaction("admin database change")
 
         flash(f"Post '{title}' updated.", "success")
         return redirect(url_for("admin.blog_post_list"))
@@ -550,7 +529,7 @@ def blog_post_delete(post_id):
     post = BlogPost.query.get_or_404(post_id)
     title = post.title
     db.session.delete(post)
-    db.session.commit()
+    commit_transaction("admin database change")
 
     flash(f"Post '{title}' deleted.", "success")
     return redirect(url_for("admin.blog_post_list"))
@@ -571,7 +550,7 @@ def blog_post_toggle_status(post_id):
         post.published_at = datetime.now(timezone.utc)
         flash(f"'{post.title}' published.", "success")
 
-    db.session.commit()
+    commit_transaction("admin database change")
     return redirect(url_for("admin.blog_post_list"))
 
 
@@ -585,24 +564,19 @@ def blog_post_toggle_status(post_id):
 def profile():
     """Admin profile settings."""
     if request.method == "POST":
-        current_password = request.form.get("current_password", "")
-        new_password = request.form.get("new_password", "")
-        confirm_password = request.form.get("confirm_password", "")
-
-        if new_password and new_password == confirm_password:
-            if len(new_password) < 12:
-                flash("New password must be at least 12 characters.", "error")
-                return redirect(url_for("admin.profile"))
-            user = db.session.get(User, current_user.id)
-            if not verify_password(user, current_password):
-                flash("Current password is incorrect.", "error")
-                return redirect(url_for("admin.profile"))
-            user.password_hash = hash_password(new_password)
-            user.salt = ""
-            db.session.commit()
-            flash("Password changed successfully.", "success")
-        else:
-            flash("New passwords do not match or are empty.", "error")
+        try:
+            current_password, new_password = validate_password_change(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            return redirect(url_for("admin.profile"))
+        user = db.session.get(User, current_user.id)
+        if not verify_password(user, current_password):
+            flash("Current password is incorrect.", "error")
+            return redirect(url_for("admin.profile"))
+        user.password_hash = hash_password(new_password)
+        user.salt = ""
+        commit_transaction("admin database change")
+        flash("Password changed successfully.", "success")
 
         return redirect(url_for("admin.profile"))
 

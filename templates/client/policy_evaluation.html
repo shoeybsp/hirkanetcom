@@ -13,7 +13,7 @@
             <div>
                 <div class="stl-hero-pill">Policy analysis workspace</div>
                 <h1 class="stl-title">Policy Evaluation</h1>
-                <p class="stl-subtitle">Evaluate FortiGate firewall policies for new access requests with a clear, ranked view of the best fit.</p>
+                <p class="stl-subtitle">Rank FortiGate policy candidates for new access requests using heuristic coverage and least-privilege scoring.</p>
             </div>
         </div>
         <div class="stl-user-nav">
@@ -24,7 +24,13 @@
                 </span>
                 <span class="stl-username">{{ current_user.username }}</span>
             </span>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</button>
+
+            </form>
         </div>
     </header>
 
@@ -39,6 +45,23 @@
     {% endif %}
     {% endwith %}
 
+    <div class="alert alert-warning" role="alert">
+        <strong>Decision-support only:</strong> Results are heuristic policy recommendations based on collected configuration data. They are not a full FortiGate packet-flow simulation and do not prove that traffic will be allowed, denied, routed, NATed, or reachable at runtime. Validate proposed changes on the FortiGate before implementation.
+    </div>
+
+    {% if validation_errors %}
+    <div class="alert alert-danger" role="alert">
+        <strong>The evaluation request was rejected.</strong>
+        <ul class="mb-0 mt-2">
+            {% for field, messages in validation_errors.items() %}
+                {% for message in messages %}
+                <li><strong>{{ field|capitalize }}:</strong> {{ message }}</li>
+                {% endfor %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
     <div class="row g-4">
         <div class="col-md-6">
             <div class="card stl-card h-100">
@@ -47,6 +70,7 @@
                 </div>
                 <div class="card-body">
                     <form action="{{ url_for('client.policy_evaluation_results') }}" method="POST" class="stl-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <div class="mb-3">
                             <label class="form-label fw-semibold label-color">Source Addresses</label>
@@ -55,7 +79,7 @@
                                 <input class="form-control stl-input stl-service-search"
                                        id="srcSearch" type="search" autocomplete="off"
                                        placeholder="Search and select source addresses">
-                                <input id="srcValue" name="src" type="hidden">
+                                <input id="srcValue" name="src" type="hidden" value="{{ (form_values.get('src', []) if form_values else [])|join(',') }}">
                                 <div class="stl-service-menu" id="srcMenu">
                                     <div class="stl-service-empty" id="srcEmpty">No addresses found.</div>
                                 </div>
@@ -72,7 +96,7 @@
                                 <input class="form-control stl-input stl-service-search"
                                        id="dstSearch" type="search" autocomplete="off"
                                        placeholder="Search and select destination addresses">
-                                <input id="dstValue" name="dst" type="hidden">
+                                <input id="dstValue" name="dst" type="hidden" value="{{ (form_values.get('dst', []) if form_values else [])|join(',') }}">
                                 <div class="stl-service-menu" id="dstMenu">
                                     <div class="stl-service-empty" id="dstEmpty">No addresses found.</div>
                                 </div>
@@ -89,7 +113,7 @@
                                 <input class="form-control stl-input stl-service-search"
                                        id="serviceSearch" type="search" autocomplete="off"
                                        placeholder="Search and select services">
-                                <input id="serviceValue" name="service" type="hidden">
+                                <input id="serviceValue" name="service" type="hidden" value="{{ (form_values.get('service', []) if form_values else [])|join(',') }}">
                                 <div class="stl-service-menu" id="serviceMenu">
                                     <div class="stl-service-empty" id="serviceEmpty">No services found.</div>
                                 </div>
@@ -113,9 +137,10 @@
                 <div class="card-body">
                     <p class="stl-help-text mb-3">
                         Upload a CSV file with access requests (source, destination, port)
-                        to get the top 3 policy suggestions for each line.
+                        to get the top three heuristic policy recommendations for each line.
                     </p>
                     <form action="{{ url_for('client.policy_evaluation_batch') }}" method="POST" enctype="multipart/form-data" class="stl-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label class="form-label fw-semibold label-color">CSV File</label>
                             <div class="stl-file-upload">
@@ -154,6 +179,14 @@
         const value = document.getElementById(config.valueId);
         const empty = document.getElementById(config.emptyId);
         const selectedItems = new Map();
+        const initialValues = value.value.split(",").map((item) => item.trim()).filter(Boolean);
+        initialValues.forEach((initialValue) => {
+            const known = config.items.find((item) => item.name.toLowerCase() === initialValue.toLowerCase());
+            selectedItems.set(initialValue.toLowerCase(), {
+                label: known ? known.name : initialValue,
+                value: known ? known.name : initialValue,
+            });
+        });
         const options = config.items.map((item) => ({
             label: item.name,
             value: item.name,

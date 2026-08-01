@@ -947,3 +947,17 @@
 @media (prefers-reduced-motion: reduce) {
     .hk-reveal { opacity: 1; transform: none; transition: none; }
 }
+/* CSRF-safe logout uses POST while retaining link styling. */
+.stl-logout-form {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+.stl-logout-form button {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+

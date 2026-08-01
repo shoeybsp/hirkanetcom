@@ -16,9 +16,20 @@
         <div class="stl-user-nav">
             <a href="{{ url_for('client.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('client.policy_evaluation') }}" class="stl-nav-link">New Evaluation</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+
+            </form>
         </div>
     </header>
+
+
+    <div class="alert alert-warning" role="alert">
+        <strong>Heuristic recommendation:</strong> This ranking is not an authoritative FortiGate packet-flow result. It does not fully model policy order, deny rules, NAT, schedules, identity, zones, policy routes, dynamic objects, VDOM behavior, or runtime reachability. Review the complete FortiGate configuration and validate the traffic path before changing a policy.
+    </div>
 
     <div class="card stl-card mb-4">
         <div class="card-body py-3">
@@ -35,7 +46,7 @@
 
     {% if best %}
     <div class="alert alert-success">
-        <strong>Best match:</strong>
+        <strong>Top recommended candidate:</strong>
         Policy {{ best.policyid }}{% if best.name %} &ndash; {{ best.name }}{% endif %}
         (score: {{ best.score }}) &mdash; {{ best.candidate_action }}
     </div>
@@ -44,7 +55,7 @@
     {% if results %}
     <div class="card stl-card">
         <div class="card-header stl-card-header">
-            <h2 class="stl-section-title mb-0">Matching Policies ({{ results|length }})</h2>
+            <h2 class="stl-section-title mb-0">Ranked Policy Candidates ({{ results|length }})</h2>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -94,7 +105,7 @@
     {% else %}
     <div class="card stl-card">
         <div class="card-body text-center py-5">
-            <h3 class="text-muted">No matching policies found.</h3>
+            <h3 class="text-muted">No policy candidates were recommended.</h3>
             <p class="text-muted">Try different source, destination, or service values.</p>
         </div>
     </div>

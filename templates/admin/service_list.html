@@ -18,7 +18,13 @@
         <div class="stl-user-nav">
             <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('admin.profile') }}" class="stl-nav-link">Profile</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+
+            </form>
         </div>
     </header>
 
@@ -67,6 +73,7 @@
                         <td>
                             <a href="{{ url_for('admin.service_edit', service_id=svc.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
                             <form action="{{ url_for('admin.service_delete', service_id=svc.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this service? Related subscriptions will also be removed.')">Delete</button>
                             </form>
                         </td>

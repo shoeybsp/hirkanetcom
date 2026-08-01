@@ -17,7 +17,13 @@
         <div class="stl-user-nav">
             <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('admin.service_list') }}" class="stl-nav-link">Services</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+
+            </form>
         </div>
     </header>
 
@@ -35,6 +41,7 @@
     <div class="card stl-card">
         <div class="card-body">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label class="form-label fw-semibold label-color">Service Name</label>
                     <input type="text" name="name" class="form-control stl-input"

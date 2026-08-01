@@ -5,6 +5,9 @@ from urllib.parse import urlparse
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
+from sqlalchemy import URL, text
+
+from secret_utils import read_secret
 
 db = SQLAlchemy()
 logger = logging.getLogger(__name__)
@@ -12,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 class User(UserMixin, db.Model):
     __tablename__ = "users"
+    __table_args__ = (
+        db.CheckConstraint(
+            "role IN ('admin', 'client')",
+            name="ck_users_role",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(100), unique=True, nullable=False, index=True)
@@ -20,7 +29,13 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default="client")  # "admin" or "client"
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    subscriptions = db.relationship("Subscription", back_populates="user", lazy="dynamic")
+    subscriptions = db.relationship(
+        "Subscription",
+        back_populates="user",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def get_id(self):
         return str(self.id)
@@ -29,8 +44,45 @@ class User(UserMixin, db.Model):
         return f"<User {self.username} ({self.role})>"
 
 
+class LoginRateLimit(db.Model):
+    """Failed-login counters shared by all application workers."""
+
+    __tablename__ = "login_rate_limits"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "scope",
+            "identifier_hash",
+            name="uq_login_rate_limits_scope_identifier",
+        ),
+        db.CheckConstraint(
+            "scope IN ('username', 'ip')",
+            name="ck_login_rate_limits_scope",
+        ),
+        db.Index("ix_login_rate_limits_blocked_until", "blocked_until_epoch"),
+        db.Index("ix_login_rate_limits_updated_at", "updated_at_epoch"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    scope = db.Column(db.String(20), nullable=False)
+    identifier_hash = db.Column(db.String(64), nullable=False)
+    window_started_epoch = db.Column(db.BigInteger, nullable=False)
+    failed_attempts = db.Column(db.Integer, nullable=False, default=0)
+    blocked_until_epoch = db.Column(db.BigInteger, nullable=False, default=0)
+    updated_at_epoch = db.Column(db.BigInteger, nullable=False)
+
+    def __repr__(self):
+        return f"<LoginRateLimit scope={self.scope} attempts={self.failed_attempts}>"
+
+
 class Service(db.Model):
     __tablename__ = "services"
+    __table_args__ = (
+        db.CheckConstraint(
+            "length(trim(service_type)) > 0",
+            name="ck_services_service_type_not_blank",
+        ),
+        db.Index("ix_services_type_active", "service_type", "is_active"),
+    )
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(200), unique=True, nullable=False)
@@ -39,7 +91,13 @@ class Service(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    subscriptions = db.relationship("Subscription", back_populates="service", lazy="dynamic")
+    subscriptions = db.relationship(
+        "Subscription",
+        back_populates="service",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __repr__(self):
         return f"<Service {self.name} ({self.service_type})>"
@@ -47,10 +105,23 @@ class Service(db.Model):
 
 class Subscription(db.Model):
     __tablename__ = "subscriptions"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "service_id",
+            name="uq_subscriptions_user_service",
+        ),
+        db.CheckConstraint(
+            "end_date IS NULL OR end_date > start_date",
+            name="ck_subscriptions_valid_date_range",
+        ),
+        db.Index("ix_subscriptions_user_active", "user_id", "is_active"),
+        db.Index("ix_subscriptions_service_active", "service_id", "is_active"),
+    )
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    service_id = db.Column(db.Integer, db.ForeignKey("services.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    service_id = db.Column(db.Integer, db.ForeignKey("services.id", ondelete="CASCADE"), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     start_date = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     end_date = db.Column(db.DateTime, nullable=True)
@@ -81,7 +152,12 @@ class BlogCategory(db.Model):
     description = db.Column(db.Text, default="")
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    posts = db.relationship("BlogPost", back_populates="category", lazy="dynamic")
+    posts = db.relationship(
+        "BlogPost",
+        back_populates="category",
+        lazy="dynamic",
+        passive_deletes=True,
+    )
 
     @property
     def published_count(self):
@@ -93,6 +169,14 @@ class BlogCategory(db.Model):
 
 class BlogPost(db.Model):
     __tablename__ = "blog_posts"
+    __table_args__ = (
+        db.CheckConstraint(
+            "status IN ('draft', 'published')",
+            name="ck_blog_posts_status",
+        ),
+        db.Index("ix_blog_posts_status_published_at", "status", "published_at"),
+        db.Index("ix_blog_posts_category_status", "category_id", "status"),
+    )
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title = db.Column(db.String(200), nullable=False)
@@ -101,8 +185,8 @@ class BlogPost(db.Model):
     content = db.Column(db.Text, nullable=False, default="")
     cover_image = db.Column(db.String(300), default="")  # path under /static, or empty
     status = db.Column(db.String(20), nullable=False, default="draft")  # draft | published
-    category_id = db.Column(db.Integer, db.ForeignKey("blog_categories.id"), nullable=True)
-    author_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("blog_categories.id", ondelete="SET NULL"), nullable=True)
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.DateTime,
@@ -167,36 +251,59 @@ def _ensure_database_path(database_url):
 
 
 def init_db(app):
-    """Initialize the database and create tables.
+    """Configure SQLAlchemy and verify database connectivity."""
 
-    Retries the initial connection with backoff. In Docker Compose, the app
-    container can start importing before Postgres is fully ready to accept
-    connections even with a healthcheck-gated `depends_on`, and a single
-    failed connection here would otherwise crash the whole container.
-    """
     import time
     from sqlalchemy.exc import OperationalError
 
-    database_url = os.environ.get("DATABASE_URL", _default_database_url())
-    database_url = _normalize_database_url(database_url)
-    _ensure_database_path(database_url)
+    configured_url = os.environ.get("DATABASE_URL")
+
+    if configured_url:
+        database_url = _normalize_database_url(configured_url)
+        _ensure_database_path(database_url)
+
+    elif os.getenv("POSTGRES_HOST"):
+        # Keep this as a SQLAlchemy URL object.
+        # Converting it with str() masks the password as "***".
+        database_url = URL.create(
+            "postgresql+psycopg2",
+            username=os.getenv("POSTGRES_USER"),
+            password=read_secret(
+                "POSTGRES_PASSWORD",
+                required=True,
+            ),
+            host=os.getenv("POSTGRES_HOST", "db"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            database=os.getenv("POSTGRES_DB"),
+        )
+
+    else:
+        database_url = _default_database_url()
+        database_url = _normalize_database_url(database_url)
+        _ensure_database_path(database_url)
+
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
     db.init_app(app)
 
     max_attempts = 10
     delay_seconds = 2
+
     for attempt in range(1, max_attempts + 1):
         try:
             with app.app_context():
-                db.create_all()
-                _seed_defaults()
-            break
+                with db.engine.connect() as connection:
+                    connection.execute(text("SELECT 1"))
+            return
+
         except OperationalError as exc:
             if attempt == max_attempts:
                 raise
+
             logger.warning(
-                "Database not ready yet (attempt %d/%d): %s. Retrying in %ds...",
+                "Database not ready yet "
+                "(attempt %d/%d): %s. Retrying in %ds...",
                 attempt,
                 max_attempts,
                 exc,
@@ -205,26 +312,59 @@ def init_db(app):
             time.sleep(delay_seconds)
 
 
-def _seed_defaults():
-    """Seed non-secret defaults and optionally bootstrap an admin from environment."""
-    from security import hash_password
-    admin = User.query.filter_by(username=os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip().lower()).first() if os.getenv("BOOTSTRAP_ADMIN_USERNAME") else None
-    bootstrap_user = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip().lower()
-    bootstrap_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
-    if bootstrap_user and bootstrap_password and admin is None:
-        if len(bootstrap_password) < 12:
-            raise RuntimeError("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters")
-        admin = User(username=bootstrap_user, password_hash=hash_password(bootstrap_password), salt="", role="admin")
-        db.session.add(admin)
-        logger.info("Bootstrap admin created", extra={"event_type":"audit_user_created","target_username":bootstrap_user})
-    default_services=[{"name":"Policy Evaluation","description":"Evaluate FortiGate firewall policies for new access requests","service_type":"policy_evaluation"}]
-    for svc_data in default_services:
-        if Service.query.filter_by(service_type=svc_data["service_type"]).first() is None:
-            db.session.add(Service(**svc_data))
-    db.session.commit()
-    if admin:
-        _seed_blog_defaults(admin)
+def seed_defaults():
+    """Seed application defaults after migrations have completed."""
+    _seed_defaults()
 
+def _seed_defaults():
+    """Seed defaults as one atomic transaction."""
+    from security import hash_password
+    from database_transactions import transaction
+
+    with transaction("seed default application data"):
+        bootstrap_user = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip().lower()
+        bootstrap_password = read_secret("BOOTSTRAP_ADMIN_PASSWORD", default="") or ""
+        admin = (
+            User.query.filter_by(username=bootstrap_user).first()
+            if bootstrap_user
+            else None
+        )
+
+        if bootstrap_user and bootstrap_password and admin is None:
+            if len(bootstrap_password) < 12:
+                raise RuntimeError(
+                    "BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters"
+                )
+            admin = User(
+                username=bootstrap_user,
+                password_hash=hash_password(bootstrap_password),
+                salt="",
+                role="admin",
+            )
+            db.session.add(admin)
+            logger.info(
+                "Bootstrap admin created",
+                extra={
+                    "event_type": "audit_user_created",
+                    "target_username": bootstrap_user,
+                },
+            )
+
+        default_services = [
+            {
+                "name": "Policy Evaluation",
+                "description": "Evaluate FortiGate firewall policies for new access requests",
+                "service_type": "policy_evaluation",
+            }
+        ]
+        for svc_data in default_services:
+            if Service.query.filter_by(
+                service_type=svc_data["service_type"]
+            ).first() is None:
+                db.session.add(Service(**svc_data))
+
+        if admin:
+            _seed_blog_defaults(admin)
 
 def _seed_blog_defaults(admin_user):
     """Seed a few illustrative blog categories and posts on first run only.
@@ -346,4 +486,3 @@ def _seed_blog_defaults(admin_user):
         )
         db.session.add(post)
 
-    db.session.commit()

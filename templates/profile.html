@@ -188,9 +188,10 @@
         <a href="/" class="btn btn-secondary stl-btn-secondary">
             Back to Home
         </a>
-        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger stl-btn-secondary">
-            Sign Out
-        </a>
+        <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-danger stl-btn-secondary">Sign Out</button>
+        </form>
     </footer>
 
 </div>

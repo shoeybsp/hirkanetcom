@@ -19,7 +19,13 @@
             <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('admin.user_list') }}" class="stl-nav-link">Users</a>
             <a href="{{ url_for('admin.service_list') }}" class="stl-nav-link">Services</a>
-            <a href="{{ url_for('logout') }}" class="stl-nav-link stl-nav-logout">Sign Out</a>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+
+            </form>
         </div>
     </header>
 
@@ -40,6 +46,7 @@
         </div>
         <div class="card-body">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label class="form-label fw-semibold label-color">Current Password</label>
                     <input type="password" name="current_password" class="form-control stl-input" required>

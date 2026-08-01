@@ -148,6 +148,12 @@
                 <p>Policy Evaluation Portal</p>
             </div>
 
+            {% if rate_limited %}
+                <div class="auth-error" role="alert">
+                    Too many sign-in attempts. Please wait before trying again.
+                </div>
+            {% endif %}
+
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}

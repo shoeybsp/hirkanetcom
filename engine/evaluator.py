@@ -1,21 +1,32 @@
-import json
-from engine.cidr_tools import is_covered_by, to_network
+from engine.cidr_tools import is_covered_by, range_spec, representative_ip, to_network, to_range
 from engine.interface_selector import select_interface_for_ip
+from engine.input_validation import validate_evaluation_request
+from engine.snapshot_store import load_snapshot_dataset
 
 class SecureTrackLite:
-    def __init__(self):
-        self.policies = self._load("data/policies.json")
-        self.addresses = self._load("data/addresses.json")
-        self.routes = self._load("data/routes.json")
-        self.services = self._load("data/services.json")
+    """Heuristic FortiGate policy candidate evaluator.
+
+    The engine ranks collected policies by coverage, interface alignment, and
+    least-privilege fit. It does not reproduce FortiGate packet processing and
+    must not be used as an authoritative allow/deny or reachability decision.
+    """
+
+    def __init__(self, data_root="data", *, verify_snapshot=True):
+        location, dataset, manifest = load_snapshot_dataset(
+            data_root, verify=verify_snapshot
+        )
+        self.snapshot_id = location.snapshot_id
+        self.snapshot_path = str(location.path)
+        self.snapshot_manifest = manifest
+        self.policies = dataset["policies.json"]
+        self.addresses = dataset["addresses.json"]
+        self.routes = dataset["routes.json"]
+        self.services = dataset["services.json"]
+        self.interfaces = dataset["interfaces.json"]
 
         self.addr_map = self._map_addresses()
         self.service_map = self._map_services()
         self.policies = self._normalize_policies()
-
-    def _load(self, path):
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
 
     def _normalize_name_list(self, values):
         return [
@@ -39,8 +50,11 @@ class SecureTrackLite:
             if "subnet" in a:
                 out[name] = a["subnet"].replace(" ", "/")
             elif "iprange" in a:
-                start = a["iprange"].split()[0]
-                out[name] = start + "/32"
+                parts = str(a["iprange"]).replace("-", " ").split()
+                if len(parts) >= 2:
+                    value = range_spec(parts[0], parts[1])
+                    if value:
+                        out[name] = value
             elif a.get("type") == "all":
                 out[name] = "0.0.0.0/0"
         return out
@@ -107,12 +121,13 @@ class SecureTrackLite:
 
     def _resolve(self, name):
         value = self.addr_map.get(name.lower())
-        if isinstance(value, dict):
+        if isinstance(value, dict) and value.get("group"):
             return None
         return value
 
     def _is_broad_network(self, name):
-        net = to_network(self._resolve(name))
+        resolved = self._resolve(name)
+        net = to_network(resolved) if isinstance(resolved, str) else None
         return bool(net and net.prefixlen == 0)
 
     def _service_aliases(self, name, seen=None):
@@ -192,13 +207,13 @@ class SecureTrackLite:
         return route_interface.lower() in policy_interfaces
 
     def _address_proximity(self, requested, policy_addr):
-        requested_net = to_network(requested)
-        policy_net = to_network(policy_addr)
-        if not requested_net or not policy_net:
+        requested_bounds = to_range(requested)
+        policy_bounds = to_range(policy_addr)
+        if not requested_bounds or not policy_bounds:
             return 0
 
-        req_int = int(requested_net.network_address)
-        pol_int = int(policy_net.network_address)
+        req_int = requested_bounds[0]
+        pol_int = policy_bounds[0]
         common_prefix = 32 - (req_int ^ pol_int).bit_length()
         common_prefix = max(0, min(common_prefix, 32))
 
@@ -300,16 +315,27 @@ class SecureTrackLite:
             return dst_matches > 0
         return True
 
+    def validate_request(self, srcs, dsts, srvs):
+        """Validate external evaluator input before matching or scoring policies."""
+        return validate_evaluation_request(
+            srcs,
+            dsts,
+            srvs,
+            known_addresses=self.addr_map.keys(),
+            known_services=self.service_map.keys(),
+        )
+
     def evaluate(self, srcs, dsts, srvs):
-        srcs = [x.strip().lower() for x in srcs if x and x.strip()]
-        dsts = [x.strip().lower() for x in dsts if x and x.strip()]
-        srvs = [x.strip().lower() for x in srvs if x and x.strip()]
-        srcs = self._request_networks(srcs)
-        dsts = self._request_networks(dsts)
+        validated = self.validate_request(srcs, dsts, srvs)
+        srcs = self._request_networks(validated.sources)
+        dsts = self._request_networks(validated.destinations)
+        srvs = validated.services
         if not srcs and not dsts and not srvs:
             return []
-        route_srcintf = select_interface_for_ip(srcs[0], self.routes) if srcs else None
-        route_dstintf = select_interface_for_ip(dsts[0], self.routes) if dsts else None
+        route_src_ip = representative_ip(srcs[0]) if srcs else None
+        route_dst_ip = representative_ip(dsts[0]) if dsts else None
+        route_srcintf = select_interface_for_ip(route_src_ip, self.routes) if route_src_ip else None
+        route_dstintf = select_interface_for_ip(route_dst_ip, self.routes) if route_dst_ip else None
 
         results = []
         for p in self.policies:

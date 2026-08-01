@@ -1,16 +1,34 @@
 #!/usr/bin/env python3
 import argparse
+import fcntl
+import hashlib
 import json
 import logging
 import os
+import shutil
 import sys
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 from urllib3.util.retry import Retry
+
+MANIFEST_FILE = "manifest.json"
+POINTER_FILE = "current.json"
+SNAPSHOTS_DIR = "snapshots"
+REQUIRED_DATA_FILES = (
+    "policies.json",
+    "addresses.json",
+    "services.json",
+    "routes.json",
+    "interfaces.json",
+)
 
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO"), format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
@@ -62,6 +80,12 @@ def parse_args():
         action="store_true",
         default=os.getenv("FORTIGATE_SKIP_MONITOR_ROUTES", "").lower() in {"1", "true", "yes"},
         help="Only collect configured static routes, not the runtime routing table.",
+    )
+    parser.add_argument(
+        "--keep-snapshots",
+        type=int,
+        default=int(os.getenv("FORTIGATE_KEEP_SNAPSHOTS", "10")),
+        help="Number of completed snapshots to retain (default: 10).",
     )
     return parser.parse_args()
 
@@ -256,11 +280,145 @@ def normalize(filename, objects):
     return objects
 
 
-def write_json(path, data):
+def _json_bytes(data):
+    return (json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def _write_bytes_durable(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2)
-        handle.write("\n")
+    with path.open("wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _fsync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _sha256(payload):
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _safe_source_host(args):
+    host = args.host.rstrip("/")
+    parsed = urlsplit(host if "://" in host else f"{args.scheme}://{host}")
+    return parsed.hostname or host
+
+
+def _snapshot_id():
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    return f"{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+@contextmanager
+def collector_lock(output_dir):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = output_dir / ".collector.lock"
+    with lock_path.open("a+") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError("Another FortiGate collection is already running") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def collect_dataset(session, args):
+    dataset = {}
+    for filename, paths in CMDB_OBJECTS.items():
+        objects = []
+        for path in paths:
+            objects.extend(fetch_cmdb(session, args, path))
+        dataset[filename] = normalize(filename, objects)
+
+    dataset["routes.json"] = collect_routes(session, args)
+    missing = [filename for filename in REQUIRED_DATA_FILES if filename not in dataset]
+    if missing:
+        raise RuntimeError(f"Collection did not produce required files: {', '.join(missing)}")
+    for filename, records in dataset.items():
+        if not isinstance(records, list):
+            raise RuntimeError(f"Collected dataset is not a list: {filename}")
+    return dataset
+
+
+def publish_snapshot(output_dir, dataset, args):
+    snapshots_dir = output_dir / SNAPSHOTS_DIR
+    snapshots_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_id = _snapshot_id()
+    staging_dir = snapshots_dir / f".staging-{snapshot_id}"
+    final_dir = snapshots_dir / snapshot_id
+    staging_dir.mkdir(mode=0o750)
+
+    try:
+        files = {}
+        for filename in REQUIRED_DATA_FILES:
+            payload = _json_bytes(dataset[filename])
+            _write_bytes_durable(staging_dir / filename, payload)
+            files[filename] = {
+                "sha256": _sha256(payload),
+                "bytes": len(payload),
+                "records": len(dataset[filename]),
+            }
+
+        collected_at = datetime.now(timezone.utc).isoformat()
+        manifest = {
+            "schema_version": 1,
+            "snapshot_id": snapshot_id,
+            "collected_at": collected_at,
+            "source": {
+                "host": _safe_source_host(args),
+                "vdom": args.vdom,
+                "scheme": args.scheme,
+                "tls_verified": bool(args.verify),
+                "monitor_routes_included": not args.skip_monitor_routes,
+            },
+            "files": files,
+        }
+        manifest_payload = _json_bytes(manifest)
+        _write_bytes_durable(staging_dir / MANIFEST_FILE, manifest_payload)
+        _fsync_directory(staging_dir)
+
+        os.rename(staging_dir, final_dir)
+        _fsync_directory(snapshots_dir)
+
+        pointer = {
+            "schema_version": 1,
+            "snapshot_id": snapshot_id,
+            "path": f"{SNAPSHOTS_DIR}/{snapshot_id}",
+            "published_at": datetime.now(timezone.utc).isoformat(),
+        }
+        pointer_tmp = output_dir / f".{POINTER_FILE}.{uuid.uuid4().hex}.tmp"
+        _write_bytes_durable(pointer_tmp, _json_bytes(pointer))
+        os.replace(pointer_tmp, output_dir / POINTER_FILE)
+        _fsync_directory(output_dir)
+        return snapshot_id, final_dir, manifest
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
+
+
+def prune_snapshots(output_dir, active_snapshot_id, keep):
+    if keep < 1:
+        raise ValueError("--keep-snapshots must be at least 1")
+    snapshots_dir = output_dir / SNAPSHOTS_DIR
+    completed = sorted(
+        (path for path in snapshots_dir.iterdir() if path.is_dir() and not path.name.startswith(".")),
+        key=lambda path: path.name,
+        reverse=True,
+    )
+    retained = {path.name for path in completed[:keep]}
+    retained.add(active_snapshot_id)
+    for path in completed:
+        if path.name not in retained:
+            shutil.rmtree(path)
+            logger.info("Old FortiGate snapshot removed", extra={"snapshot_id": path.name})
 
 
 def main():
@@ -268,24 +426,32 @@ def main():
     if not args.host or not args.token:
         logger.error("FORTIGATE_HOST and FORTIGATE_TOKEN are required")
         return 2
+    if args.keep_snapshots < 1:
+        logger.error("FORTIGATE_KEEP_SNAPSHOTS must be at least 1")
+        return 2
 
     session = build_session(args.token)
     if not args.verify:
         disable_warnings(InsecureRequestWarning)
     output_dir = Path(args.output_dir)
 
-    for filename, paths in CMDB_OBJECTS.items():
-        objects = []
-        for path in paths:
-            objects.extend(fetch_cmdb(session, args, path))
-        data = normalize(filename, objects)
-        write_json(output_dir / filename, data)
-        logger.info("FortiGate objects written", extra={"object_count":len(data),"output_file":str(output_dir / filename)})
+    try:
+        with collector_lock(output_dir):
+            dataset = collect_dataset(session, args)
+            snapshot_id, snapshot_dir, manifest = publish_snapshot(output_dir, dataset, args)
+            prune_snapshots(output_dir, snapshot_id, args.keep_snapshots)
+    except Exception:
+        logger.exception("FortiGate snapshot collection failed")
+        return 1
 
-    routes = collect_routes(session, args)
-    write_json(output_dir / "routes.json", routes)
-    logger.info("FortiGate routes written", extra={"object_count":len(routes),"output_file":str(output_dir / "routes.json")})
-
+    logger.info(
+        "FortiGate snapshot published",
+        extra={
+            "snapshot_id": snapshot_id,
+            "snapshot_dir": str(snapshot_dir),
+            "record_counts": {name: entry["records"] for name, entry in manifest["files"].items()},
+        },
+    )
     return 0
 
 

@@ -1,0 +1,11 @@
+{% extends "main/base.html" %}
+{% block title %}Database operation failed | Hirkanet{% endblock %}
+{% block content %}
+<section class="container py-5">
+  <div class="alert alert-danger" role="alert">
+    <h1 class="h4">Database operation failed</h1>
+    <p class="mb-0">{{ message }}</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('main.home') }}">Return</a>
+</section>
+{% endblock %}
