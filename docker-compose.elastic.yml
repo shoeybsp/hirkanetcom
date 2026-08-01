@@ -8,7 +8,7 @@ x-docker-logging: &default-logging
 
 services:
   elastic-certs-migrate:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
     user: "0:0"
     restart: "no"
     cpus: "0.25"
@@ -32,7 +32,7 @@ services:
     logging: *default-logging
 
   elastic-certs-setup:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
     user: "0:0"
     restart: "no"
     cpus: "0.5"
@@ -81,7 +81,7 @@ services:
     logging: *default-logging
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
     restart: unless-stopped
     cpus: "1.5"
     mem_limit: 1536m
@@ -145,7 +145,7 @@ services:
     logging: *default-logging
 
   elastic-init:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION:-9.3.8}
+    image: elasticsearch:${STACK_VERSION:-9.3.8}
     user: "0:0"
     restart: "no"
     cpus: "0.5"
@@ -236,7 +236,7 @@ services:
     logging: *default-logging
 
   logstash:
-    image: docker.elastic.co/logstash/logstash:${STACK_VERSION:-9.3.8}
+    image: logstash:${STACK_VERSION:-9.3.8}
     restart: unless-stopped
     cpus: "1.0"
     mem_limit: 768m
@@ -275,21 +275,22 @@ services:
       test:
         - CMD-SHELL
         - >-
-          ruby -rnet/http -rjson -e '
-          response = Net::HTTP.get_response(URI("http://127.0.0.1:9600/_node/pipelines"));
-          body = JSON.parse(response.body);
-          exit(response.is_a?(Net::HTTPSuccess) && body.fetch("pipelines", {}).key?("main") ? 0 : 1)'
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 45s
+          bash -c '
+            exec 3<>/dev/tcp/127.0.0.1/9600 &&
+            printf "GET /_node/pipelines HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 &&
+            grep -q "\"main\"" <&3
+          '
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
     networks:
       - logging-ingest
       - elastic-backend
     logging: *default-logging
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:${STACK_VERSION:-9.3.8}
+    image: kibana:${STACK_VERSION:-9.3.8}
     restart: unless-stopped
     cpus: "1.0"
     mem_limit: 1g
@@ -354,7 +355,7 @@ services:
     logging: *default-logging
 
   docker-socket-proxy:
-    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
+    image: tecnativa/docker-socket-proxy:v0.4.2
     restart: unless-stopped
     cpus: "0.25"
     mem_limit: 128m
@@ -391,7 +392,7 @@ services:
     logging: *default-logging
 
   filebeat:
-    image: docker.elastic.co/beats/filebeat:${STACK_VERSION:-9.3.8}
+    image: elastic/filebeat:8.19.19
     restart: unless-stopped
     cpus: "0.5"
     mem_limit: 256m

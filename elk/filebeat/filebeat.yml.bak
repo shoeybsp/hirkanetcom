@@ -1,46 +1,33 @@
 filebeat.inputs:
   - type: filestream
     id: hirkanet-docker-logs
-    enabled: true
-    paths:
-      - /var/lib/docker/containers/*/*.log
+    paths: ["/var/lib/docker/containers/*/*.log"]
     parsers:
       - container:
           stream: all
           format: docker
-
 processors:
   - add_docker_metadata:
-      host: tcp://docker-socket-proxy:2375
-      match_source: true
-      match_source_index: 4
-      cleanup_timeout: 60s
-
+      host: unix:///var/run/docker.sock
   - drop_event:
       when:
         not:
           or:
             - equals:
-                container.labels.hirkanet_log_role: "application"
+                container.labels.hirkanet_log_role: application
             - equals:
-                container.labels.hirkanet_log_role: "database"
-
+                container.labels.hirkanet_log_role: database
 output.logstash:
-  hosts:
-    - logstash:5044
+  hosts: ["logstash:5044"]
   ssl.enabled: true
-  ssl.certificate_authorities:
-    - /usr/share/filebeat/certs/ca.crt
+  ssl.certificate_authorities: ["/usr/share/filebeat/certs/ca.crt"]
   ssl.verification_mode: full
-
 queue.mem:
   events: 4096
   flush.min_events: 512
-
 logging.level: info
 logging.to_files: false
 logging.to_stderr: true
-
 http.enabled: true
 http.host: 127.0.0.1
 http.port: 5066
