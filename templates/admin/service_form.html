@@ -16,6 +16,7 @@
         </div>
         <div class="stl-user-nav">
             <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
+            <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link">Devices</a>
             <a href="{{ url_for('admin.service_list') }}" class="stl-nav-link">Services</a>
             <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
 

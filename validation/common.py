@@ -50,6 +50,31 @@ def boolean_checkbox(data: Mapping, field: str) -> bool:
     return str(data.get(field, "") or "").lower() in {"on", "true", "1", "yes"}
 
 
+def bounded_int(
+    data: Mapping,
+    field: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+    label: str | None = None,
+) -> int:
+    """Validate a required integer setting field within an inclusive range."""
+    raw = str(data.get(field, "") or "").strip()
+    name = label or field
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({field: [f"{name} must be a whole number."]}) from None
+    if value < minimum or value > maximum:
+        raise ValidationError(
+            {field: [f"{name} must be between {minimum} and {maximum}."]}
+        )
+    return value
+
+
 def username(value: str) -> str:
     value = (value or "").strip().lower()
     errors: list[str] = []
@@ -86,4 +111,19 @@ def service_type(value: str) -> str:
         raise ValidationError({"service_type": ["Must be at most 100 characters."]})
     if not _SERVICE_TYPE_RE.fullmatch(value):
         raise ValidationError({"service_type": ["Use lowercase letters, numbers, underscores, or hyphens."]})
+    return value
+
+
+def host_address(value: str, *, field: str = "api_host") -> str:
+    """Validate a device API host/IP (with optional scheme and port)."""
+    value = (value or "").strip()
+    errors: list[str] = []
+    if not value:
+        errors.append("API host is required.")
+    elif len(value) > 255:
+        errors.append("Must be at most 255 characters.")
+    elif any(ch.isspace() for ch in value):
+        errors.append("Must not contain whitespace.")
+    if errors:
+        raise ValidationError({field: errors})
     return value

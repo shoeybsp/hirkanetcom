@@ -11,6 +11,7 @@
         <div class="stl-brand">
             <div>
                 <h1 class="stl-title">Policy Evaluation Results</h1>
+                {% if device %}<p class="stl-subtitle">Device: {{ device.name }}</p>{% endif %}
             </div>
         </div>
         <div class="stl-user-nav">

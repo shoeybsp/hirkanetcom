@@ -49,6 +49,46 @@
         <strong>Decision-support only:</strong> Results are heuristic policy recommendations based on collected configuration data. They are not a full FortiGate packet-flow simulation and do not prove that traffic will be allowed, denied, routed, NATed, or reachable at runtime. Validate proposed changes on the FortiGate before implementation.
     </div>
 
+    {% if device_error %}
+    <div class="alert alert-danger" role="alert">
+        {{ device_error }}
+    </div>
+    {% endif %}
+
+    {% if devices %}
+    <div class="card stl-card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('client.policy_evaluation') }}" class="stl-form" id="deviceSwitchForm">
+                <label class="form-label fw-semibold label-color" for="deviceSelect">Device</label>
+                <div class="d-flex gap-2 align-items-start flex-wrap">
+                    <select name="device_id" id="deviceSelect" class="form-select stl-input" style="max-width:420px;"
+                            onchange="document.getElementById('deviceSwitchForm').submit();">
+                        {% for device in devices %}
+                        <option value="{{ device.id }}" {% if selected_device and device.id == selected_device.id %}selected{% endif %}>
+                            {{ device.name }}{% if device.api_host %} ({{ device.api_host }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <noscript><button type="submit" class="btn btn-secondary">Switch</button></noscript>
+                </div>
+                {% if selected_device %}
+                <div class="form-text stl-help-text">
+                    {% if selected_device.last_sync_at %}
+                        Data last collected {{ selected_device.last_sync_at.strftime('%Y-%m-%d %H:%M UTC') }}.
+                    {% else %}
+                        This device has never been synced.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    {% elif not device_error %}
+    <div class="alert alert-warning" role="alert">
+        No devices have been assigned to your account. Contact an administrator to request access to a device.
+    </div>
+    {% endif %}
+
     {% if validation_errors %}
     <div class="alert alert-danger" role="alert">
         <strong>The evaluation request was rejected.</strong>
@@ -71,6 +111,7 @@
                 <div class="card-body">
                     <form action="{{ url_for('client.policy_evaluation_results') }}" method="POST" class="stl-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% if selected_device %}<input type="hidden" name="device_id" value="{{ selected_device.id }}">{% endif %}
 
                         <div class="mb-3">
                             <label class="form-label fw-semibold label-color">Source Addresses</label>
@@ -141,6 +182,7 @@
                     </p>
                     <form action="{{ url_for('client.policy_evaluation_batch') }}" method="POST" enctype="multipart/form-data" class="stl-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {% if selected_device %}<input type="hidden" name="device_id" value="{{ selected_device.id }}">{% endif %}
                         <div class="mb-3">
                             <label class="form-label fw-semibold label-color">CSV File</label>
                             <div class="stl-file-upload">

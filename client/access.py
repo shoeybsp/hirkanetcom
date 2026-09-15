@@ -6,7 +6,7 @@ from functools import wraps
 from flask import abort, request
 from flask_login import current_user
 
-from models import Service, Subscription, db
+from models import Device, DeviceAssignment, Service, Subscription, db
 
 logger = logging.getLogger(__name__)
 
@@ -53,3 +53,40 @@ def subscription_required(service_type: str):
         return wrapped
 
     return decorator
+
+
+def get_assigned_devices(user_id: int) -> list[Device]:
+    """Return the active devices a client has been granted access to.
+
+    A device only shows up here if both the assignment and the device
+    itself are active - an admin deactivating a device (e.g. while it's
+    being decommissioned) immediately hides it from clients without
+    needing to also touch every individual assignment.
+    """
+    return (
+        db.session.query(Device)
+        .join(DeviceAssignment, DeviceAssignment.device_id == Device.id)
+        .filter(
+            DeviceAssignment.user_id == user_id,
+            DeviceAssignment.is_active.is_(True),
+            Device.is_active.is_(True),
+        )
+        .order_by(Device.name)
+        .all()
+    )
+
+
+def has_device_access(user_id: int, device_id: int) -> bool:
+    """Return whether a user may evaluate policies against a given device."""
+    return (
+        db.session.query(DeviceAssignment.id)
+        .join(Device, DeviceAssignment.device_id == Device.id)
+        .filter(
+            DeviceAssignment.user_id == user_id,
+            DeviceAssignment.device_id == device_id,
+            DeviceAssignment.is_active.is_(True),
+            Device.is_active.is_(True),
+        )
+        .first()
+        is not None
+    )

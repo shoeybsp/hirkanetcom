@@ -18,7 +18,12 @@ from engine.snapshot_store import active_snapshot_id
 from validation.evaluation import EvaluationInputError, MAX_BATCH_ROWS
 from validation import ValidationError
 from validation.uploads import validate_csv_upload
-from client.access import has_active_service_subscription, subscription_required
+from client.access import (
+    get_assigned_devices,
+    has_active_service_subscription,
+    subscription_required,
+)
+from collectors.sync_service import resolve_device_data_root
 
 client_bp = Blueprint("client", __name__, url_prefix="/client")
 logger = logging.getLogger(__name__)
@@ -59,25 +64,67 @@ def service_value(service):
     return protocol
 
 
-# -- Engine (lazy) ------------------------------------------------------------
+# -- Engine (lazy, per device) ------------------------------------------------
 
-_engine = None
+# Engines are cached per device id. Each entry is reloaded when that device's
+# active snapshot pointer changes, so a fresh admin sync is picked up without
+# a restart. The cache is process-local; with multiple gunicorn workers each
+# worker builds its own, which is fine because snapshots are immutable.
+_engines = {}
 
 
-def ensure_engine():
-    global _engine
-    current_id = active_snapshot_id()
-    if _engine is None or (current_id and _engine.snapshot_id != current_id):
+def ensure_engine(device):
+    """Return a cached evaluator for a device, reloading it when its snapshot changes."""
+    if device is None:
+        return None
+
+    data_root = str(resolve_device_data_root(device))
+    current_id = active_snapshot_id(data_root)
+    cached = _engines.get(device.id)
+
+    if cached is None or (current_id and cached.snapshot_id != current_id):
         try:
-            _engine = SecureTrackLite()
-            logger.info(
-                "FortiGate evaluation snapshot loaded",
-                extra={"snapshot_id": _engine.snapshot_id},
-            )
+            engine_inst = SecureTrackLite(data_root=data_root)
         except Exception:
-            logger.exception("Failed to initialize SecureTrackLite engine")
-            _engine = None
-    return _engine
+            logger.exception(
+                "Failed to initialize SecureTrackLite engine",
+                extra={"device_id": str(device.id)},
+            )
+            _engines.pop(device.id, None)
+            return None
+        _engines[device.id] = engine_inst
+        logger.info(
+            "FortiGate evaluation snapshot loaded",
+            extra={"snapshot_id": engine_inst.snapshot_id, "device_id": str(device.id)},
+        )
+        return engine_inst
+
+    return cached
+
+
+def resolve_selected_device(raw_device_id, available_devices):
+    """Pick the device a request targets, defaulting to the first available one.
+
+    Returns (device, error_message). A device is only ever returned if it
+    appears in available_devices, which the caller builds from the user's
+    own assignments - so this doubles as the authorization check.
+    """
+    if not available_devices:
+        return None, "No devices have been assigned to your account."
+
+    if raw_device_id in (None, ""):
+        return available_devices[0], None
+
+    try:
+        device_id = int(raw_device_id)
+    except (TypeError, ValueError):
+        return None, "Invalid device selection."
+
+    for device in available_devices:
+        if device.id == device_id:
+            return device, None
+
+    return None, "You do not have access to the selected device."
 
 
 def evaluation_catalog(engine_inst):
@@ -107,12 +154,25 @@ def evaluation_catalog(engine_inst):
     return addresses, services
 
 
-def render_policy_evaluation(engine_inst, *, validation_errors=None, form_values=None, status=200):
+def render_policy_evaluation(
+    engine_inst,
+    *,
+    devices=None,
+    selected_device=None,
+    device_error=None,
+    validation_errors=None,
+    form_values=None,
+    status=200,
+):
     addresses, services = evaluation_catalog(engine_inst)
     return render_template(
         "client/policy_evaluation.html",
         addresses=addresses,
         services=services,
+        devices=devices or [],
+        selected_device=selected_device,
+        device_error=device_error,
+        engine_available=engine_inst is not None,
         validation_errors=validation_errors or {},
         form_values=form_values or {},
     ), status
@@ -159,8 +219,17 @@ def policy_evaluation():
         flash("You do not have access to the Policy Evaluation service.", "error")
         return redirect(url_for("client.dashboard"))
 
-    engine_inst = ensure_engine()
-    return render_policy_evaluation(engine_inst)
+    devices = get_assigned_devices(current_user.id)
+    selected_device, device_error = resolve_selected_device(
+        request.args.get("device_id"), devices
+    )
+    engine_inst = ensure_engine(selected_device)
+    return render_policy_evaluation(
+        engine_inst,
+        devices=devices,
+        selected_device=selected_device,
+        device_error=device_error,
+    )
 
 
 @client_bp.route("/policy-evaluation/results", methods=["POST"])
@@ -172,9 +241,41 @@ def policy_evaluation_results():
     dst = clean_list(request.form.get("dst"))
     svc = clean_list(request.form.get("service"))
 
-    eng = ensure_engine()
+    devices = get_assigned_devices(current_user.id)
+    selected_device, device_error = resolve_selected_device(
+        request.form.get("device_id"), devices
+    )
+    if device_error:
+        logger.warning(
+            "Policy evaluation device selection rejected",
+            extra={
+                "event_type": "policy_evaluation_device_denied",
+                "user_id": str(current_user.id),
+                "requested_device_id": str(request.form.get("device_id")),
+            },
+        )
+        return render_policy_evaluation(
+            None,
+            devices=devices,
+            selected_device=None,
+            device_error=device_error,
+            form_values={"src": src, "dst": dst, "service": svc},
+            status=403,
+        )
+
+    eng = ensure_engine(selected_device)
     if not eng:
-        return "Engine not available; ensure data files exist.", 500
+        return render_policy_evaluation(
+            None,
+            devices=devices,
+            selected_device=selected_device,
+            device_error=(
+                f"No collected data is available for '{selected_device.name}' yet. "
+                "Ask an administrator to sync this device."
+            ),
+            form_values={"src": src, "dst": dst, "service": svc},
+            status=503,
+        )
 
     try:
         validated = eng.validate_request(src, dst, svc)
@@ -189,15 +290,17 @@ def policy_evaluation_results():
         )
         return render_policy_evaluation(
             eng,
+            devices=devices,
+            selected_device=selected_device,
             validation_errors=exc.errors,
             form_values={"src": src, "dst": dst, "service": svc},
             status=400,
         )
 
     started=time.perf_counter()
-    logger.info("Policy evaluation started", extra={"event_type":"policy_evaluation_started","user_id":str(current_user.id),"source_count":len(validated.sources),"destination_count":len(validated.destinations),"service_count":len(validated.services)})
+    logger.info("Policy evaluation started", extra={"event_type":"policy_evaluation_started","user_id":str(current_user.id),"device_id":str(selected_device.id),"source_count":len(validated.sources),"destination_count":len(validated.destinations),"service_count":len(validated.services)})
     res = eng.evaluate(validated.sources, validated.destinations, validated.services)
-    logger.info("Policy evaluation completed", extra={"event_type":"policy_evaluation_completed","user_id":str(current_user.id),"result_count":len(res),"event_duration":int((time.perf_counter()-started)*1_000_000_000)})
+    logger.info("Policy evaluation completed", extra={"event_type":"policy_evaluation_completed","user_id":str(current_user.id),"device_id":str(selected_device.id),"result_count":len(res),"event_duration":int((time.perf_counter()-started)*1_000_000_000)})
     best = res[0] if res else None
 
     return render_template(
@@ -208,6 +311,7 @@ def policy_evaluation_results():
         query_src=validated.sources,
         query_dst=validated.destinations,
         query_service=validated.services,
+        device=selected_device,
     )
 
 
@@ -216,9 +320,27 @@ def policy_evaluation_results():
 @subscription_required("policy_evaluation")
 def policy_evaluation_batch():
     """Accept a CSV file with source,destination,port lines and evaluate each."""
-    eng = ensure_engine()
+    devices = get_assigned_devices(current_user.id)
+    selected_device, device_error = resolve_selected_device(
+        request.form.get("device_id"), devices
+    )
+    if device_error:
+        logger.warning(
+            "Batch policy evaluation device selection rejected",
+            extra={
+                "event_type": "policy_evaluation_device_denied",
+                "user_id": str(current_user.id),
+                "requested_device_id": str(request.form.get("device_id")),
+            },
+        )
+        return device_error, 403
+
+    eng = ensure_engine(selected_device)
     if not eng:
-        return "Engine not available; ensure data files exist.", 500
+        return (
+            f"No collected data is available for '{selected_device.name}' yet. "
+            "Ask an administrator to sync this device."
+        ), 503
 
     try:
         csv_text = validate_csv_upload(request.files.get("csv_file"))
@@ -300,9 +422,10 @@ def policy_evaluation_batch():
             "suggestions": top3,
         })
 
-    logger.info("Batch policy evaluation completed", extra={"event_type":"policy_evaluation_batch_completed","user_id":str(current_user.id),"input_rows":len(rows),"result_rows":len(batch_results)})
+    logger.info("Batch policy evaluation completed", extra={"event_type":"policy_evaluation_batch_completed","user_id":str(current_user.id),"device_id":str(selected_device.id),"input_rows":len(rows),"result_rows":len(batch_results)})
     return render_template(
         "client/batch_results.html",
         results=batch_results,
         has_header=has_header,
+        device=selected_device,
     )

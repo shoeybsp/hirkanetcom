@@ -5,11 +5,28 @@ from urllib.parse import urlparse
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from sqlalchemy import URL, text
+from sqlalchemy import URL, event, text
+from sqlalchemy.engine import Engine
 
 from secret_utils import read_secret
 
 db = SQLAlchemy()
+
+
+@event.listens_for(Engine, "connect")
+def _enforce_sqlite_foreign_keys(dbapi_connection, connection_record):
+    """Make SQLite enforce FOREIGN KEY constraints, including ON DELETE
+    CASCADE/SET NULL, per-connection.
+
+    SQLite ignores these constraints by default unless this pragma is set on
+    every connection. Postgres (used in production, per docker-compose)
+    enforces them natively regardless, so this only matters for local
+    development and tests that use the sqlite:// fallback URL.
+    """
+    if dbapi_connection.__class__.__module__.startswith("sqlite3"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +48,14 @@ class User(UserMixin, db.Model):
 
     subscriptions = db.relationship(
         "Subscription",
+        back_populates="user",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    device_assignments = db.relationship(
+        "DeviceAssignment",
         back_populates="user",
         lazy="dynamic",
         cascade="all, delete-orphan",
@@ -131,6 +156,106 @@ class Subscription(db.Model):
 
     def __repr__(self):
         return f"<Subscription user={self.user_id} service={self.service_id} active={self.is_active}>"
+
+
+class Device(db.Model):
+    """A collectible network device (currently FortiGate) registered by an admin.
+
+    Credentials are stored encrypted (see secret_crypto.py) and are never
+    rendered back into HTML. ``data_dir`` is the path (relative to the
+    collector's working directory) where this device's snapshots live; each
+    device gets its own isolated snapshot store so evaluation results never
+    mix data between devices.
+    """
+
+    __tablename__ = "devices"
+    __table_args__ = (
+        db.CheckConstraint(
+            "device_type IN ('fortigate')",
+            name="ck_devices_device_type",
+        ),
+        db.CheckConstraint(
+            "last_sync_status IS NULL OR last_sync_status IN ('success', 'failure')",
+            name="ck_devices_last_sync_status",
+        ),
+        db.Index("ix_devices_type_active", "device_type", "is_active"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), unique=True, nullable=False)
+    device_type = db.Column(db.String(50), nullable=False, default="fortigate")
+
+    # Connection settings
+    api_host = db.Column(db.String(255), nullable=False, default="")
+    api_scheme = db.Column(db.String(10), nullable=False, default="https")
+    vdom = db.Column(db.String(100), nullable=False, default="root")
+    verify_ssl = db.Column(db.Boolean, nullable=False, default=False)
+    timeout_seconds = db.Column(db.Integer, nullable=False, default=30)
+    skip_monitor_routes = db.Column(db.Boolean, nullable=False, default=False)
+    keep_snapshots = db.Column(db.Integer, nullable=False, default=10)
+
+    # Encrypted credentials. api_key is what the FortiGate collector uses
+    # today; username/password are stored for device types added later.
+    api_key_encrypted = db.Column(db.Text, nullable=True)
+    auth_username_encrypted = db.Column(db.Text, nullable=True)
+    auth_password_encrypted = db.Column(db.Text, nullable=True)
+
+    data_dir = db.Column(db.String(500), unique=True, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Populated by the sync service after each collection attempt.
+    last_sync_at = db.Column(db.DateTime, nullable=True)
+    last_sync_status = db.Column(db.String(20), nullable=True)  # "success" | "failure"
+    last_sync_message = db.Column(db.Text, nullable=True)
+    last_snapshot_id = db.Column(db.String(150), nullable=True)
+
+    assignments = db.relationship(
+        "DeviceAssignment",
+        back_populates="device",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    def __repr__(self):
+        return f"<Device {self.name} ({self.device_type})>"
+
+
+class DeviceAssignment(db.Model):
+    """Grants a client user access to evaluate policies against one device."""
+
+    __tablename__ = "device_assignments"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "device_id",
+            name="uq_device_assignments_user_device",
+        ),
+        db.Index("ix_device_assignments_user_active", "user_id", "is_active"),
+        db.Index("ix_device_assignments_device_active", "device_id", "is_active"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    device_id = db.Column(db.Integer, db.ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    assigned_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User", back_populates="device_assignments")
+    device = db.relationship("Device", back_populates="assignments")
+
+    def __repr__(self):
+        return (
+            f"<DeviceAssignment user={self.user_id} device={self.device_id} "
+            f"active={self.is_active}>"
+        )
 
 
 def slugify(value):
@@ -362,6 +487,27 @@ def _seed_defaults():
                 service_type=svc_data["service_type"]
             ).first() is None:
                 db.session.add(Service(**svc_data))
+
+        # Pre-multi-device installs collect into a single top-level "data"
+        # directory with no associated Device row. Register it once so
+        # existing snapshots keep working under the new device inventory
+        # without moving any files. This only runs when no devices exist yet,
+        # so it never overwrites an admin's own device inventory.
+        if Device.query.count() == 0:
+            legacy_device = Device(
+                name="Default FortiGate",
+                device_type="fortigate",
+                data_dir="data",
+                is_active=True,
+            )
+            db.session.add(legacy_device)
+            logger.info(
+                "Legacy default device registered",
+                extra={
+                    "event_type": "audit_device_created",
+                    "device_name": legacy_device.name,
+                },
+            )
 
         if admin:
             _seed_blog_defaults(admin)

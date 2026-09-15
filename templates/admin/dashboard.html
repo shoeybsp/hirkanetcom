@@ -20,6 +20,7 @@
                 <span class="stl-user-role-badge stl-user-role-admin">admin</span>
                 <span class="stl-username">{{ current_user.username }}</span>
             </span>
+            <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link" title="Devices">Devices</a>
             <a href="{{ url_for('admin.profile') }}" class="stl-nav-link" title="Profile">Profile</a>
             <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
 
@@ -62,8 +63,8 @@
         <div class="col-md-3">
             <div class="card stl-card text-center h-100">
                 <div class="card-body">
-                    <h3 class="display-4">{{ subscription_count }}</h3>
-                    <p class="text-muted mb-0">Subscriptions</p>
+                    <h3 class="display-4">{{ device_count }}</h3>
+                    <p class="text-muted mb-0">Devices</p>
                 </div>
             </div>
         </div>
@@ -89,6 +90,20 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6">
+            <div class="card stl-card h-100">
+                <div class="card-header stl-card-header">
+                    <h2 class="stl-section-title mb-0">Device Inventory</h2>
+                </div>
+                <div class="card-body">
+                    <p>Register devices, configure API credentials, and control which clients can evaluate policies against each one. {{ device_count }} device{{ 's' if device_count != 1 else '' }} registered.</p>
+                    <a href="{{ url_for('admin.device_list') }}" class="btn btn-primary stl-btn-primary">Manage Devices</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
         <div class="col-md-6">
             <div class="card stl-card h-100">
                 <div class="card-header stl-card-header">

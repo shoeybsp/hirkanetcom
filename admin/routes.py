@@ -14,13 +14,17 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from flask_login import login_required, current_user
-from models import db, User, Service, Subscription, BlogCategory, BlogPost, slugify
+from models import db, User, Service, Subscription, BlogCategory, BlogPost, Device, DeviceAssignment, slugify
 from database_transactions import commit_transaction
 from security import hash_password, verify_password
+from secret_crypto import encrypt_secret
+from collectors.sync_service import DeviceSyncError, run_device_sync
 from validation import ValidationError
 from validation.admin import (
     validate_blog_post,
     validate_category,
+    validate_device,
+    validate_device_assignment_user_ids,
     validate_password_change,
     validate_service,
     validate_subscription_ids,
@@ -61,6 +65,7 @@ def dashboard():
     subscription_count = Subscription.query.count()
     blog_post_count = BlogPost.query.count()
     blog_category_count = BlogCategory.query.count()
+    device_count = Device.query.count()
     return render_template(
         "admin/dashboard.html",
         user_count=user_count,
@@ -68,6 +73,7 @@ def dashboard():
         subscription_count=subscription_count,
         blog_post_count=blog_post_count,
         blog_category_count=blog_category_count,
+        device_count=device_count,
     )
 
 
@@ -304,6 +310,263 @@ def service_delete(service_id):
 
     flash(f"Service '{svc.name}' deleted.", "success")
     return redirect(url_for("admin.service_list"))
+
+
+# =============================================================================
+# Device Inventory Management
+# =============================================================================
+
+
+@admin_bp.route("/devices")
+@admin_required
+def device_list():
+    """List all registered devices."""
+    devices = Device.query.order_by(Device.name).all()
+    return render_template("admin/device_list.html", devices=devices)
+
+
+@admin_bp.route("/devices/create", methods=["GET", "POST"])
+@admin_required
+def device_create():
+    """Register a new device."""
+    if request.method == "POST":
+        try:
+            values = validate_device(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            return render_template("admin/device_form.html", device=None)
+
+        existing = Device.query.filter_by(name=values.name).first()
+        if existing:
+            flash(f"Device '{values.name}' already exists.", "error")
+            return render_template("admin/device_form.html", device=None)
+
+        device = Device(
+            name=values.name,
+            device_type=values.device_type,
+            api_host=values.api_host,
+            api_scheme=values.api_scheme,
+            vdom=values.vdom,
+            verify_ssl=values.verify_ssl,
+            timeout_seconds=values.timeout_seconds,
+            skip_monitor_routes=values.skip_monitor_routes,
+            keep_snapshots=values.keep_snapshots,
+            is_active=values.is_active,
+            # Each device gets its own isolated snapshot directory, keyed by
+            # a random id rather than the (renameable) device name.
+            data_dir=f"data/devices/{uuid.uuid4().hex}",
+            api_key_encrypted=encrypt_secret(values.api_key),
+            auth_username_encrypted=encrypt_secret(values.auth_username),
+            auth_password_encrypted=encrypt_secret(values.auth_password),
+        )
+        db.session.add(device)
+        commit_transaction("admin database change")
+        logger.info(
+            "Device created",
+            extra={
+                "event_type": "audit_device_created",
+                "actor_user_id": str(current_user.id),
+                "device_id": str(device.id),
+                "device_name": device.name,
+            },
+        )
+
+        if not values.api_key:
+            flash(
+                f"Device '{device.name}' created. Add an API key before syncing it.",
+                "success",
+            )
+        else:
+            flash(f"Device '{device.name}' created.", "success")
+        return redirect(url_for("admin.device_list"))
+
+    return render_template("admin/device_form.html", device=None)
+
+
+@admin_bp.route("/devices/<int:device_id>/edit", methods=["GET", "POST"])
+@admin_required
+def device_edit(device_id):
+    """Edit a device's connection settings and credentials."""
+    device = Device.query.get_or_404(device_id)
+
+    if request.method == "POST":
+        try:
+            values = validate_device(request.form)
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            return render_template("admin/device_form.html", device=device)
+
+        existing = Device.query.filter(
+            Device.name == values.name, Device.id != device_id
+        ).first()
+        if existing:
+            flash(f"Device '{values.name}' already exists.", "error")
+            return render_template("admin/device_form.html", device=device)
+
+        device.name = values.name
+        device.device_type = values.device_type
+        device.api_host = values.api_host
+        device.api_scheme = values.api_scheme
+        device.vdom = values.vdom
+        device.verify_ssl = values.verify_ssl
+        device.timeout_seconds = values.timeout_seconds
+        device.skip_monitor_routes = values.skip_monitor_routes
+        device.keep_snapshots = values.keep_snapshots
+        device.is_active = values.is_active
+
+        # Credential fields are write-only and never rendered back into the
+        # form; a blank field means "keep the currently stored value",
+        # matching the admin password-change pattern used elsewhere.
+        if values.api_key:
+            device.api_key_encrypted = encrypt_secret(values.api_key)
+        if values.auth_username:
+            device.auth_username_encrypted = encrypt_secret(values.auth_username)
+        if values.auth_password:
+            device.auth_password_encrypted = encrypt_secret(values.auth_password)
+
+        commit_transaction("admin database change")
+        logger.info(
+            "Device updated",
+            extra={
+                "event_type": "audit_device_updated",
+                "actor_user_id": str(current_user.id),
+                "device_id": str(device.id),
+            },
+        )
+
+        flash(f"Device '{device.name}' updated.", "success")
+        return redirect(url_for("admin.device_list"))
+
+    return render_template("admin/device_form.html", device=device)
+
+
+@admin_bp.route("/devices/<int:device_id>/delete", methods=["POST"])
+@admin_required
+def device_delete(device_id):
+    """Delete a device from the inventory.
+
+    This only removes the database record (and, via cascade, any client
+    assignments for it). Collected snapshot files under the device's
+    data_dir are left on disk untouched.
+    """
+    device = Device.query.get_or_404(device_id)
+    name = device.name
+    device_id_str = str(device.id)
+
+    db.session.delete(device)
+    commit_transaction("admin database change")
+    logger.info(
+        "Device deleted",
+        extra={
+            "event_type": "audit_device_deleted",
+            "actor_user_id": str(current_user.id),
+            "device_id": device_id_str,
+            "device_name": name,
+        },
+    )
+
+    flash(f"Device '{name}' deleted. Its collected snapshot data on disk was not removed.", "success")
+    return redirect(url_for("admin.device_list"))
+
+
+@admin_bp.route("/devices/<int:device_id>/sync", methods=["POST"])
+@admin_required
+def device_sync(device_id):
+    """Run the collector for a single device and record the outcome."""
+    device = Device.query.get_or_404(device_id)
+
+    if not device.is_active:
+        flash(f"Device '{device.name}' is inactive. Activate it before syncing.", "error")
+        return redirect(url_for("admin.device_list"))
+
+    logger.info(
+        "Device sync requested",
+        extra={
+            "event_type": "device_sync_requested",
+            "actor_user_id": str(current_user.id),
+            "device_id": str(device.id),
+        },
+    )
+
+    try:
+        result = run_device_sync(device)
+    except DeviceSyncError as exc:
+        # last_sync_* fields were updated by the sync service; persist them
+        # so the failure is visible in the device list.
+        commit_transaction("admin database change")
+        flash(f"Sync failed for '{device.name}': {exc}", "error")
+        return redirect(url_for("admin.device_list"))
+
+    commit_transaction("admin database change")
+    counts = result["record_counts"]
+    flash(
+        f"Synced '{device.name}': {counts.get('policies.json', 0)} policies, "
+        f"{counts.get('addresses.json', 0)} addresses, "
+        f"{counts.get('services.json', 0)} services, "
+        f"{counts.get('routes.json', 0)} routes, "
+        f"{counts.get('interfaces.json', 0)} interfaces.",
+        "success",
+    )
+    return redirect(url_for("admin.device_list"))
+
+
+@admin_bp.route("/devices/<int:device_id>/assignments", methods=["GET", "POST"])
+@admin_required
+def device_assignments(device_id):
+    """Manage which client users may evaluate policies against this device."""
+    device = Device.query.get_or_404(device_id)
+    clients = User.query.filter_by(role="client").order_by(User.username).all()
+
+    if request.method == "POST":
+        try:
+            selected_user_ids = validate_device_assignment_user_ids(
+                request.form.getlist("users"),
+                allowed_ids={user.id for user in clients},
+            )
+        except ValidationError as exc:
+            flash(exc.as_text(), "error")
+            assigned_ids = {a.user_id for a in device.assignments}
+            return render_template(
+                "admin/device_assignments.html",
+                device=device,
+                clients=clients,
+                assigned_ids=assigned_ids,
+            )
+
+        # Remove unselected assignments
+        for assignment in device.assignments:
+            if assignment.user_id not in selected_user_ids:
+                db.session.delete(assignment)
+
+        # Add new assignments
+        existing_ids = {a.user_id for a in device.assignments}
+        for user_id in selected_user_ids:
+            if user_id not in existing_ids:
+                db.session.add(
+                    DeviceAssignment(user_id=user_id, device_id=device.id, is_active=True)
+                )
+
+        commit_transaction("admin database change")
+        logger.info(
+            "Device client access updated",
+            extra={
+                "event_type": "audit_device_assignments_updated",
+                "actor_user_id": str(current_user.id),
+                "device_id": str(device.id),
+                "assigned_user_count": len(selected_user_ids),
+            },
+        )
+
+        flash(f"Client access for '{device.name}' updated.", "success")
+        return redirect(url_for("admin.device_list"))
+
+    assigned_ids = {a.user_id for a in device.assignments}
+    return render_template(
+        "admin/device_assignments.html",
+        device=device,
+        clients=clients,
+        assigned_ids=assigned_ids,
+    )
 
 
 # =============================================================================

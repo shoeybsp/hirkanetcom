@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>User Subscriptions - SecureTrack-Lite</title>
+    <title>Client Access - SecureTrack-Lite</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
 </head>
@@ -11,14 +11,13 @@
     <header class="stl-header mb-4">
         <div class="stl-brand">
             <div>
-                <h1 class="stl-title">Subscriptions: {{ user.username }}</h1>
-                <p class="stl-subtitle">Manage service access for this user</p>
+                <h1 class="stl-title">Client Access: {{ device.name }}</h1>
+                <p class="stl-subtitle">Choose which clients can evaluate policies against this device</p>
             </div>
         </div>
         <div class="stl-user-nav">
             <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
             <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link">Devices</a>
-            <a href="{{ url_for('admin.user_list') }}" class="stl-nav-link">Users</a>
             <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
 
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -45,24 +44,29 @@
             <form method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Available Services</label>
-                    <p class="text-muted small">Select the services this user should have access to.</p>
-                    {% for svc in services %}
+                    <label class="form-label fw-semibold label-color">Client Users</label>
+                    <p class="text-muted small">
+                        Only checked clients will see this device as an option when evaluating policies.
+                        {% if not device.is_active %}
+                        <span class="text-warning">This device is currently inactive, so no client can evaluate against it regardless of assignment.</span>
+                        {% endif %}
+                    </p>
+                    {% for client in clients %}
                     <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="services" value="{{ svc.id }}"
-                               id="svc_{{ svc.id }}"
-                               {% if svc.id in user.subscriptions|map(attribute='service_id')|list %}checked{% endif %}>
-                        <label class="form-check-label label-color" for="svc_{{ svc.id }}">
-                            <strong>{{ svc.name }}</strong>
-                            {% if svc.description %} - {{ svc.description }}{% endif %}
-                            <span class="badge bg-secondary">{{ svc.service_type }}</span>
-                            {% if not svc.is_active %}<span class="badge bg-warning">Inactive</span>{% endif %}
+                        <input class="form-check-input" type="checkbox" name="users" value="{{ client.id }}"
+                               id="client_{{ client.id }}"
+                               {% if client.id in assigned_ids %}checked{% endif %}>
+                        <label class="form-check-label label-color" for="client_{{ client.id }}">
+                            <strong>{{ client.username }}</strong>
+                            {% if not client.is_active %}<span class="badge bg-warning">Inactive account</span>{% endif %}
                         </label>
                     </div>
+                    {% else %}
+                    <p class="text-muted">No client users exist yet.</p>
                     {% endfor %}
                 </div>
-                <button type="submit" class="btn btn-primary stl-btn-primary">Save Subscriptions</button>
-                <a href="{{ url_for('admin.user_list') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary stl-btn-primary">Save Access</button>
+                <a href="{{ url_for('admin.device_list') }}" class="btn btn-secondary">Cancel</a>
             </form>
         </div>
     </div>
