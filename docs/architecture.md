@@ -95,11 +95,19 @@ collected and independently assigned to clients.
   so far; a FortiGate with a very large policy set could take long enough
   to hit Gunicorn's worker timeout. Moving sync to a background job is the
   fix if that happens in practice - not yet implemented.
-- **Storage housekeeping is not yet multi-device aware:**
-  `scripts/storage-monitor.py` and `scripts/storage-retention.py` both
-  hardcode `root / "data"` and do not iterate `data/devices/<id>/`
-  directories. Any per-device disk-usage monitoring or retention currently
-  only covers the legacy default device's directory.
+- **Storage housekeeping is multi-device aware:** `scripts/storage-monitor.py`
+  and `scripts/storage-retention.py` iterate both the legacy `data/`
+  layout and every `data/devices/<id>/` directory. Two bugs were found and
+  fixed while verifying this against a controlled multi-device fixture:
+  the active-snapshot integrity check originally only ever read the
+  single legacy `data/current.json`, producing a false CRITICAL alert on
+  any install without a legacy device (each device has its own
+  `current.json` under its own `data_dir`); and retention's per-device
+  pruning was silently gated behind a `--per-device` flag that, if
+  forgotten, meant snapshots for every non-legacy device were never
+  pruned at all. Both scripts now cover every device unconditionally; the
+  flag is still accepted by `storage-retention.py` for backward CLI
+  compatibility but is now a documented no-op.
 
 ---
 ## 4. Evaluation Engine
@@ -199,8 +207,16 @@ collected and independently assigned to clients.
   `Dockerfile`, added after discovering that an unpinned system user (whose
   UID depends on base-image internals) caused "Sync Now" to fail with a
   host bind-mount permission error the first time it tried to create a new
-  per-device snapshot directory. Host directories (`data/`, `uploads/`,
-  `static/uploads/`) must be `chown`'d to this UID/GID before first start;
+  per-device snapshot directory.
+- **`data/` is a Docker-managed named volume** (`hirkanet_data:/app/data`
+  in `docker-compose.yml`), not a host bind mount. The Dockerfile explicitly
+  creates `/app/data` with `uid 10001` ownership before `USER app`
+  (`RUN mkdir -p /app/data ... && chown -R app:app /app`), so Docker's
+  first-time volume population - which copies a mount path's existing
+  image content and ownership into a newly created named volume - always
+  has correct ownership to copy, regardless of what the host build machine
+  happens to contain. `uploads/` and `static/uploads/` remain host bind
+  mounts and still need an explicit host-side `chown -R 10001:10001`;
   documented in `docs/depoly-readme.md`.
 - **TLS/Hostname Verification:** `docs/HTTPS-DEPLOYMENT.md`,
   `tests/test_full_tls_hostname_verification.py`.
@@ -254,9 +270,10 @@ collected and independently assigned to clients.
   docs), grouped by concern: core secrets, database, networking, rate
   limiting, logging, the legacy standalone collector, and Compose.
 - **First-time setup order:** create and `chown` the bind-mounted
-  directories (section 7) then `docker compose up -d --build`, at which
-  point `migrate` runs schema migrations and seeds defaults (including the
-  backward-compat legacy device) before `app` starts.
+  `uploads`/`static/uploads` directories (`data` needs no host-side setup -
+  it's a named volume, section 7) then `docker compose up -d --build`, at
+  which point `migrate` runs schema migrations and seeds defaults
+  (including the backward-compat legacy device) before `app` starts.
 - **Backup Strategy:** `scripts/postgres-backup.sh` /
   `postgres-restore.sh`, retention via `scripts/storage-retention.py`
   (single-device-data-dir limitation noted in section 3).
@@ -266,18 +283,16 @@ collected and independently assigned to clients.
 
 Concrete, verified items - not speculative "future work":
 
-1. **`scripts/storage-monitor.py` / `storage-retention.py`** don't iterate
-   per-device data directories yet (section 3).
-2. **Synchronous device sync** could exceed Gunicorn's default 30s worker
+1. **Synchronous device sync** could exceed Gunicorn's default 30s worker
    timeout against a FortiGate with a very large policy set; untested
    against real hardware so far, only against a mock API.
-3. **`docker-compose.yml`'s app stack (`db`/`migrate`/`app`) doesn't use
+2. **`docker-compose.yml`'s app stack (`db`/`migrate`/`app`) doesn't use
    Docker secrets**, unlike the ELK stack which already does correctly;
    `.env` works but keeps values in the container's process environment.
-4. **No `.gitignore` exists in this repository snapshot.**
-5. **`auth/user_store.py` is orphaned dead code** with no remaining
+3. **No `.gitignore` exists in this repository snapshot.**
+4. **`auth/user_store.py` is orphaned dead code** with no remaining
    imports; `tests/test_no_legacy_user_store.py` expects it removed.
-6. Several root-level files referenced by this repo's own `SHA256SUMS`
+5. Several root-level files referenced by this repo's own `SHA256SUMS`
    manifest were absent from the snapshot this work was done against
    (`CHANGED-FILES.txt`, `COMPOSE-DEPLOYMENT.md`,
    `ELASTIC-STACK-IMPLEMENTATION-REPORT.md`, `ELK-SETUP.md`,

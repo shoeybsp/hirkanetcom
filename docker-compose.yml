@@ -8,8 +8,6 @@ x-docker-logging: &default-logging
 
 services:
   db:
-    ports:
-      - "127.0.0.1:5432:5432"
     image: postgres:16-alpine
     restart: unless-stopped
     cpus: "1.0"
@@ -104,7 +102,7 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
     volumes:
-      - ./data:/app/data
+      - hirkanet_data:/app/data
       - ./uploads:/app/uploads
       - ./static/uploads:/app/static/uploads
     command:
@@ -130,6 +128,8 @@ services:
 volumes:
   postgres_data:
     name: hirkanet-app_postgres_data
+  hirkanet_data:
+    # Named volume for application data; Docker will own it with UID 10001
 
 networks:
   app-db:

@@ -179,17 +179,51 @@ uploads/
 static/uploads/
 ```
 
-Create them before startup:
+Create the host-mounted ones before startup (application data now lives in
+a Docker-managed named volume, `hirkanet_data`, not a host directory - see
+below):
 
 ```bash
-mkdir -p data/snapshots uploads static/uploads/blog backups/postgres
+mkdir -p uploads static/uploads/blog backups/postgres
 ```
 
-Do not use `chmod 777`. If Docker reports permission errors, determine the application container UID and assign the directories deliberately. On a single-host deployment, a practical first check is:
+The application container runs as a non-root user with a fixed UID/GID of
+`10001` (see the `app` user in the Dockerfile). `data/` in `docker-compose.yml`
+is a **named volume** (`hirkanet_data:/app/data`), not a host bind mount:
+Docker populates it from `/app/data` inside the built image the first time
+it's created, and the Dockerfile explicitly creates that path with
+`uid 10001` ownership (`RUN mkdir -p /app/data ... && chown -R app:app /app`)
+so the volume always comes up writable regardless of what the host build
+machine happens to contain. Nothing to `chown` on the host for `data/`.
+
+`uploads/` and `static/uploads/` are still plain host bind mounts, so - like
+before - their permissions come from the host filesystem and need explicit
+ownership:
 
 ```bash
-ls -ld data uploads static/uploads backups
+sudo chown -R 10001:10001 uploads static/uploads
 ```
+
+Do not use `chmod 777`. If you rebuild the image against a different base
+that assigns a different UID, `docker compose exec app id` will tell you the
+UID/GID actually in use so you can adjust the `chown` above.
+
+```bash
+ls -ld uploads static/uploads backups
+docker volume ls | grep hirkanet   # confirms hirkanet-app_hirkanet_data exists
+```
+
+Since `data/` is a named volume, it isn't visible as a folder in the project
+directory on the host. To inspect its contents:
+
+```bash
+docker compose exec app ls -la /app/data
+```
+
+If you're migrating from an earlier bind-mounted `./data` setup, its
+contents are **not** copied into the new named volume automatically - copy
+them over explicitly (e.g. with a one-off container mounting both paths) if
+you want to keep existing collected snapshots.
 
 FortiGate data and uploads contain sensitive or persistent information and must be included in the host backup plan.
 

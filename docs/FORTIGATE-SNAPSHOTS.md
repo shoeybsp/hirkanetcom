@@ -4,8 +4,10 @@ Hirkanet stores each completed FortiGate collection as an immutable, versioned s
 
 ## Directory layout
 
+Snapshot data is stored inside the `hirkanet-app_hirkanet_data` named Docker volume. The internal layout is:
+
 ```text
-data/
+/app/data/  (inside container, backed by named volume)
 ├── current.json
 └── snapshots/
     ├── 20260731T120000.000000Z-a1b2c3d4/
@@ -16,6 +18,12 @@ data/
     │   ├── routes.json
     │   └── interfaces.json
     └── ...
+```
+
+To inspect snapshot files on the host:
+
+```bash
+docker run --rm -v hirkanet-app_hirkanet_data:/data alpine find /data/snapshots -type f | head -20
 ```
 
 `current.json` is the only mutable publication pointer. It is replaced atomically after every required JSON file and the manifest have been written, flushed, and the completed staging directory has been renamed into place.

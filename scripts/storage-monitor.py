@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Hirkanet storage capacity, freshness, and retention-policy monitor."""
+"""Hirkanet storage capacity, freshness, and retention-policy monitor.
+
+Device-aware: iterates over data/devices/*/snapshots as well as the legacy
+single-device data/snapshots layout, and reports per-device metrics for
+storage usage, snapshot count, stale staging directories, and active
+snapshot pointer integrity.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -11,7 +18,7 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,7 +59,7 @@ def severity(value: float, warning: float, critical: float) -> str:
     return "ok"
 
 
-def max_status(statuses: list[str]) -> str:
+def max_status(statuses: List[str]) -> str:
     rank = {"ok": 0, "warning": 1, "critical": 2, "unknown": 1}
     return max(statuses, key=lambda item: rank.get(item, 1), default="ok")
 
@@ -81,7 +88,7 @@ class Check:
     message: str = ""
 
 
-def compose_exec(compose_file: str, args: list[str], stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+def compose_exec(compose_file: str, args: List[str], stdin: str | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["docker", "compose", "-f", compose_file, "exec", "-T", "db", *args],
         input=stdin,
@@ -91,8 +98,8 @@ def compose_exec(compose_file: str, args: list[str], stdin: str | None = None) -
     )
 
 
-def postgres_checks(compose_file: str) -> list[Check]:
-    checks: list[Check] = []
+def postgres_checks(compose_file: str) -> List[Check]:
+    checks: List[Check] = []
     if shutil.which("docker") is None:
         return [Check("postgres_database_size", "unknown", None, message="docker command is unavailable")]
 
@@ -104,12 +111,10 @@ def postgres_checks(compose_file: str) -> list[Check]:
     if result.returncode != 0:
         message = (result.stderr or result.stdout).strip()[-500:]
         return [Check("postgres_database_size", "unknown", None, message=message or "database query failed")]
-
     try:
         db_bytes = int(result.stdout.strip())
     except ValueError:
         return [Check("postgres_database_size", "unknown", result.stdout.strip(), message="unexpected query output")]
-
     warn = env_int("POSTGRES_DB_WARN_BYTES", 5 * 1024**3)
     crit = env_int("POSTGRES_DB_CRITICAL_BYTES", 10 * 1024**3)
     checks.append(Check("postgres_database_size", severity(db_bytes, warn, crit), db_bytes, "bytes"))
@@ -130,14 +135,14 @@ def postgres_checks(compose_file: str) -> list[Check]:
     return checks
 
 
-def backup_checks(backup_dir: Path) -> list[Check]:
-    checks: list[Check] = []
+def backup_checks(backup_dir: Path) -> List[Check]:
+    checks: List[Check] = []
     total = dir_size(backup_dir)
     warn_bytes = env_int("BACKUP_STORAGE_WARN_BYTES", 20 * 1024**3)
     crit_bytes = env_int("BACKUP_STORAGE_CRITICAL_BYTES", 40 * 1024**3)
     checks.append(Check("postgres_backup_storage", severity(total, warn_bytes, crit_bytes), total, "bytes"))
 
-    verified: list[tuple[datetime, Path]] = []
+    verified: List[tuple[datetime, Path]] = []
     if backup_dir.exists():
         for meta in backup_dir.glob("*.dump.meta"):
             values: dict[str, str] = {}
@@ -153,7 +158,6 @@ def backup_checks(backup_dir: Path) -> list[Check]:
             created = parse_timestamp(values.get("created_at_utc", ""))
             if created:
                 verified.append((created, meta))
-
     if not verified:
         checks.append(Check("latest_verified_backup_age", "critical", None, message="no restore-tested PostgreSQL backup found"))
     else:
@@ -165,46 +169,85 @@ def backup_checks(backup_dir: Path) -> list[Check]:
     return checks
 
 
-def snapshot_checks(data_dir: Path) -> list[Check]:
-    snapshots_dir = data_dir / "snapshots"
-    total = dir_size(snapshots_dir)
-    warn_bytes = env_int("FORTIGATE_STORAGE_WARN_BYTES", 5 * 1024**3)
-    crit_bytes = env_int("FORTIGATE_STORAGE_CRITICAL_BYTES", 10 * 1024**3)
-    checks = [Check("fortigate_snapshot_storage", severity(total, warn_bytes, crit_bytes), total, "bytes")]
-
-    completed = [p for p in snapshots_dir.iterdir() if p.is_dir() and not p.name.startswith(".")] if snapshots_dir.exists() else []
-    keep = env_int("FORTIGATE_KEEP_SNAPSHOTS", 10)
-    excess = max(0, len(completed) - keep)
-    checks.append(Check("fortigate_snapshot_count", "warning" if excess else "ok", len(completed), "snapshots", f"retention target={keep}"))
-
-    staging = [p for p in snapshots_dir.glob(".staging-*") if p.is_dir()] if snapshots_dir.exists() else []
-    stale_hours = env_int("FORTIGATE_STAGING_MAX_AGE_HOURS", 24)
-    now = datetime.now(timezone.utc).timestamp()
-    stale = [p for p in staging if (now - p.stat().st_mtime) / 3600 > stale_hours]
-    checks.append(Check("stale_fortigate_staging_directories", "warning" if stale else "ok", len(stale), "directories", f"older than {stale_hours}h"))
-
+def _active_snapshot_check(name: str, data_dir: Path, snapshots_dir: Path) -> Check:
+    """Check whether data_dir/current.json points at a snapshot that actually
+    exists under snapshots_dir. Shared by the legacy and per-device paths so
+    every device - not just the legacy one - gets this integrity check."""
     pointer = data_dir / "current.json"
     if not pointer.exists():
-        checks.append(Check("fortigate_active_snapshot", "critical", None, message="data/current.json is missing"))
-    else:
-        try:
-            payload = json.loads(pointer.read_text(encoding="utf-8"))
-            snapshot_id = payload.get("snapshot_id")
-            target = snapshots_dir / str(snapshot_id)
-            status = "ok" if snapshot_id and target.is_dir() else "critical"
-            checks.append(Check("fortigate_active_snapshot", status, snapshot_id, message="active snapshot directory missing" if status != "ok" else ""))
-        except (OSError, json.JSONDecodeError) as exc:
-            checks.append(Check("fortigate_active_snapshot", "critical", None, message=str(exc)))
+        return Check(name, "critical", None, message=f"{data_dir}/current.json is missing")
+    try:
+        payload = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return Check(name, "critical", None, message=str(exc))
+    snapshot_id = payload.get("snapshot_id")
+    target = snapshots_dir / str(snapshot_id) if snapshot_id else None
+    if snapshot_id and target and target.is_dir():
+        return Check(name, "ok", snapshot_id)
+    return Check(name, "critical", snapshot_id, message="active snapshot directory missing")
+
+
+def snapshot_checks(root: Path, per_device: bool) -> List[Check]:
+    # per_device is accepted for CLI compatibility with storage-retention.py's
+    # flag of the same name, but monitoring always reports every layout that
+    # actually exists on disk - unlike retention, hiding data behind an
+    # unset flag has no safety benefit here, only blind spots.
+    del per_device
+    checks: List[Check] = []
+    data_root = root / "data"
+
+    # Legacy single-device layout (fallback / the auto-registered default
+    # device from before multi-device support existed).
+    legacy_snapshots = data_root / "snapshots"
+    if legacy_snapshots.exists():
+        total = dir_size(legacy_snapshots)
+        warn = env_int("FORTIGATE_STORAGE_WARN_BYTES", 5 * 1024**3)
+        crit = env_int("FORTIGATE_STORAGE_CRITICAL_BYTES", 10 * 1024**3)
+        checks.append(Check("fortigate_snapshot_storage_legacy", severity(total, warn, crit), total, "bytes"))
+        completed = [p for p in legacy_snapshots.iterdir() if p.is_dir() and not p.name.startswith(".")]
+        keep = env_int("FORTIGATE_KEEP_SNAPSHOTS", 10)
+        excess = max(0, len(completed) - keep)
+        checks.append(Check("fortigate_snapshot_count_legacy", "warning" if excess else "ok", len(completed), "snapshots", f"retention target={keep}"))
+        checks.append(_active_snapshot_check("fortigate_active_snapshot_legacy", data_root, legacy_snapshots))
+
+    # Device-aware layout: data/devices/<device_id>/snapshots
+    devices_dir = data_root / "devices"
+    if devices_dir.is_dir():
+        for device_path in sorted(devices_dir.iterdir()):
+            if not device_path.is_dir():
+                continue
+            device_name = device_path.name
+            snapshots_dir = device_path / "snapshots"
+            total = dir_size(snapshots_dir)
+            warn = env_int("FORTIGATE_STORAGE_WARN_BYTES", 5 * 1024**3)
+            crit = env_int("FORTIGATE_STORAGE_CRITICAL_BYTES", 10 * 1024**3)
+            checks.append(Check(f"fortigate_snapshot_storage_{device_name}", severity(total, warn, crit), total, "bytes"))
+            completed = [p for p in snapshots_dir.iterdir() if p.is_dir() and not p.name.startswith(".")]
+            keep = env_int("FORTIGATE_KEEP_SNAPSHOTS", 10)
+            excess = max(0, len(completed) - keep)
+            checks.append(Check(f"fortigate_snapshot_count_{device_name}", "warning" if excess else "ok", len(completed), "snapshots", f"retention target={keep}"))
+            staging = [p for p in snapshots_dir.glob(".staging-*") if p.is_dir()]
+            stale_hours = env_int("FORTIGATE_STAGING_MAX_AGE_HOURS", 24)
+            now = datetime.now(timezone.utc).timestamp()
+            stale = [p for p in staging if (now - p.stat().st_mtime) / 3600 > stale_hours]
+            checks.append(Check(f"stale_fortigate_staging_{device_name}", "warning" if stale else "ok", len(stale), "directories", f"older than {stale_hours}h"))
+            # Each device has its own current.json under its own data_dir -
+            # unlike the old single-pointer layout, there is no single
+            # shared "active snapshot" to check once at the top level.
+            checks.append(_active_snapshot_check(f"fortigate_active_snapshot_{device_name}", device_path, snapshots_dir))
+
+    if not legacy_snapshots.exists() and not (devices_dir.is_dir() and any(devices_dir.iterdir())):
+        checks.append(Check("fortigate_active_snapshot", "critical", None, message="no device data found under data/ or data/devices/"))
+
     return checks
 
 
-def local_storage_checks(root: Path) -> list[Check]:
+def local_storage_checks(root: Path) -> List[Check]:
     usage = shutil.disk_usage(root)
     used_pct = percent(usage.used, usage.total)
     warn_pct = env_int("HOST_STORAGE_WARN_PERCENT", 80)
     crit_pct = env_int("HOST_STORAGE_CRITICAL_PERCENT", 90)
     checks = [Check("host_filesystem_used", severity(used_pct, warn_pct, crit_pct), used_pct, "percent")]
-
     upload_bytes = dir_size(root / "static" / "uploads") + dir_size(root / "uploads")
     warn_uploads = env_int("UPLOAD_STORAGE_WARN_BYTES", 5 * 1024**3)
     crit_uploads = env_int("UPLOAD_STORAGE_CRITICAL_BYTES", 10 * 1024**3)
@@ -217,20 +260,25 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--compose-file", default=os.getenv("COMPOSE_FILE", "docker-compose.yml"))
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument(
+        "--per-device",
+        action="store_true",
+        help="accepted for compatibility with storage-retention.py; monitoring always reports every device regardless",
+    )
     args = parser.parse_args()
     root = args.root.resolve()
 
-    checks: list[Check] = []
+    checks: List[Check] = []
     checks.extend(local_storage_checks(root))
     checks.extend(backup_checks(root / "backups" / "postgres"))
-    checks.extend(snapshot_checks(root / "data"))
+    checks.extend(snapshot_checks(root, per_device=args.per_device))
     checks.extend(postgres_checks(str((root / args.compose_file).resolve())))
 
-    overall = max_status([check.status for check in checks])
+    overall = max_status([c.status for c in checks])
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "overall_status": overall,
-        "checks": [asdict(check) for check in checks],
+        "checks": [asdict(c) for c in checks],
     }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -238,9 +286,8 @@ def main() -> int:
         print(f"Hirkanet storage status: {overall.upper()}")
         for check in checks:
             value = "unknown" if check.value is None else f"{check.value}{(' ' + check.unit) if check.unit else ''}"
-            suffix = f" — {check.message}" if check.message else ""
+            suffix = f" - {check.message}" if check.message else ""
             print(f"[{check.status.upper():8}] {check.name}: {value}{suffix}")
-
     return {"ok": 0, "warning": 1, "unknown": 1, "critical": 2}[overall]
 
 

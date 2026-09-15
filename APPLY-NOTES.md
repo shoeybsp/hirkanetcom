@@ -1,55 +1,49 @@
-# Applying the multi-device changes
+# Housekeeping patch (supersedes hirkanet-permission-fix.zip and
+# hirkanet-architecture-update.zip - use this one instead of those)
 
-30 files: 21 modified, 9 new. No files are deleted or renamed.
+Four files, all drop-in replacements:
+
+    Dockerfile               pinned uid/gid 10001 + explicit data/uploads/
+                              static-uploads dir creation
+    requirements.txt          + PyYAML==6.0.3 (missing test dependency)
+    docs/architecture.md      rewritten to reflect current codebase +
+                              the named-volume data mount
+    docs/depoly-readme.md     corrected first-time setup instructions for
+                              the named-volume data mount
 
 ## Apply
 
-From the root of your git repo, with a clean working tree:
+    cp Dockerfile /path/to/hirkanet/Dockerfile
+    cp requirements.txt /path/to/hirkanet/requirements.txt
+    cp docs/architecture.md /path/to/hirkanet/docs/architecture.md
+    cp docs/depoly-readme.md /path/to/hirkanet/docs/depoly-readme.md
 
-    git checkout -b multi-device-support
-    unzip -o hirkanet-multidevice-overlay.zip -d .
-    git status          # should show 21 modified, 9 untracked
-    git diff            # review before committing
+## What changed and why (chronological)
 
-## New files (9)
+1. Dockerfile: pinned the container user to uid=10001, gid=10001 (was
+   auto-assigned by the base image, unstable across rebuilds) - fixes
+   "Sync Now" failing with a bind-mount permission error.
+2. requirements.txt: added PyYAML, which several tests need to parse
+   docker-compose.yml directly. It was missing entirely; only appeared to
+   work in prior testing because an unrelated tool pulled it in as a
+   transitive dependency. Verified broken from, and then fixed in, a
+   genuinely clean venv.
+3. Dockerfile: added explicit `mkdir -p /app/data /app/uploads
+   /app/static/uploads` before the chown, so those paths reliably exist
+   in the image with correct ownership on every build - needed once
+   `data` became a named volume (see next point), since Docker only
+   auto-populates a named volume's ownership from a path that already
+   exists in the image.
+4. docs/depoly-readme.md + architecture.md: updated to describe the real,
+   current setup after `data` was switched from a host bind mount to the
+   named volume `hirkanet_data:/app/data` in docker-compose.yml - data
+   needs no host-side chown anymore; uploads/static-uploads still do.
 
-    secret_crypto.py
-    collectors/__init__.py
-    collectors/sync_service.py
-    migrations/versions/20260802_0005_device_inventory.py
-    templates/admin/device_list.html
-    templates/admin/device_form.html
-    templates/admin/device_assignments.html
-    tests/test_device_sync_service.py
-    tests/test_device_selection_authorization.py
+## On your machine
 
-## Modified files (21)
-
-    admin/routes.py                 device CRUD, sync, assignment routes
-    client/access.py                get_assigned_devices, has_device_access
-    client/routes.py                per-device engine cache + selection
-    models.py                       Device, DeviceAssignment, sqlite FK pragma
-    requirements.txt                + cryptography==43.0.3
-    validation/admin.py             validate_device, assignment id validation
-    validation/common.py            host_address, bounded_int
-    templates/admin/*.html          10 files: "Devices" nav link only
-    templates/admin/dashboard.html  nav link + device stat card
-    templates/client/*.html         3 files: device selector / device label
-
-## After applying
-
-1. pip install -r requirements.txt        (adds cryptography)
-2. Set DEVICE_CREDENTIAL_KEY in your environment / .env / secrets.
-   Required in production; falls back to a dev-only key otherwise.
-   Losing or changing this key makes stored device API keys undecryptable.
-3. flask --app api.app db upgrade         (creates devices, device_assignments)
-4. flask --app api.app seed-defaults      (registers existing data/ as
-                                           "Default FortiGate"; idempotent)
-
-## Notes
-
-- SHA256SUMS in the repo root is now stale for any file it covers that
-  changed here. Regenerate it if you use it for integrity verification.
-- The migration is additive and reversible (`db downgrade 20260801_0004`).
-- No existing snapshot files are moved. The pre-existing data/ directory is
-  registered as a device in place.
+    docker compose down
+    sudo chown -R 10001:10001 ./uploads ./static/uploads
+    docker compose up -d --build
+    docker compose exec app id                 # uid=10001(app) gid=10001(app)
+    docker volume ls | grep hirkanet            # hirkanet-app_hirkanet_data
+    pip install -r requirements.txt             # if running tests locally, picks up PyYAML

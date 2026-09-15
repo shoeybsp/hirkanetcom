@@ -1,38 +1,23 @@
-# Python caches and build output
+# Python build artefacts
 __pycache__/
 *.py[cod]
-*$py.class
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-build/
-dist/
-*.egg-info/
 
-# Virtual environments
-.venv/
+# Virtual environment
 venv/
-env/
-nginx/
-# Local tool and runtime state
-.codex
-.codex/
-.ansible/
-*.log
-*.pid
-
-# Environment and secrets
 .env
-.env.*
-!.env.example
 
-# OS and editor files
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-*.swo
-static/logo.jpg
+# SQLite databases (development)
+*.sqlite3
+
+# Log files
+*.log
+
+# Environment files (example)
+.env.example
+
+# Root‑level documentation files that are not source code (keep them out of version control if they are generated)
+CHANGED-FILES.txt
+COMPOSE-DEPLOYMENT.md
+ELASTIC-STACK-IMPLEMENTATION-REPORT.md
+
+data/

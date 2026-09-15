@@ -14,7 +14,7 @@ PostgreSQL stores:
 - Blog posts and metadata
 - Alembic migration state
 
-FortiGate policy data is not stored in the relational schema. It is stored as immutable, versioned snapshots under `data/snapshots/` with an atomic active pointer. Uploaded media is also external to PostgreSQL.
+FortiGate policy data is not stored in the relational schema. It is stored as immutable, versioned snapshots inside the `hirkanet-app_hirkanet_data` named Docker volume, with an atomic active pointer. Uploaded media is also external to PostgreSQL.
 
 The removed legacy `data/users.json` store must not be reintroduced. PostgreSQL is the only identity source.
 

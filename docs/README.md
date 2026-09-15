@@ -150,13 +150,17 @@ Open:
 http://127.0.0.1:5000
 ```
 
-For local development with your host `data/` directory mounted into the container:
+For local development with Docker:
 
 ```bash
 docker compose up --build
 ```
 
-The Compose setup mounts `./data` at `/app/data`, so changes from your FortiGate collection output are picked up the next time the container starts.
+Device snapshots and PostgreSQL data are stored in named Docker volumes (`hirkanet-app_hirkanet_data`, `hirkanet-app_postgres_data`). To inspect snapshot files:
+
+```bash
+docker run --rm -v hirkanet-app_hirkanet_data:/data alpine find /data -name "*.json" | head -10
+```
 
 The container runs the Flask app with Gunicorn on port `5000` and includes a `/healthz` endpoint for Docker health checks.
 
