@@ -1,310 +1,258 @@
-# Hirkanet.Com
+# Hirkanet
 
-A lightweight, open, extensible **firewall policy analysis engine** inspired by Tufin SecureTrack — built for **FortiGate**.  
-It evaluates access requests using **CIDR‑aware logic**, ranks policies by **least‑privilege fit**, and provides a **clean Web UI**.
+**Application Delivery. Cyber Security. Assured.**
 
----
+Hirkanet is a web application that evaluates firewall policy access requests against real, collected device configuration — inspired by Tufin SecureTrack, built for FortiGate. Its core policy-evaluation engine, **SecureTrack‑Lite**, ranks candidate policies by least-privilege fit rather than just returning a yes/no answer, so an operator can see *why* a request would or wouldn't be allowed and what the closest safer alternative looks like.
 
-## ✨ Features
+The application supports multiple registered FortiGate devices, each with its own encrypted credentials, its own collected snapshot data, and its own set of authorized client users — managed entirely through an admin panel, with no manual file editing required.
 
-- Evaluate access requests using real **IP addresses**, **CIDRs**, or **service names**
-- Full **policy ranking** with a least‑privilege scoring model
-- Highlights the **best candidate policy**
-- CIDR-aware matching using Python's `ipaddress`
-- Auto interface detection using FortiGate routing tables
-- Modern web UI (Flask + Bootstrap)
-- REST endpoint (`/evaluate`) for automation
-- Extensible engine with modular structure
-- Python requests collector for FortiGate 6.4.x:
-  - Firewall policies
-  - Address objects
-  - Address groups
-  - Service objects and groups
-  - Routing table
-  - Interfaces
+> Decision support, not a packet simulator: SecureTrack‑Lite's ranking is heuristic. It does not model every FortiGate feature (NAT, UTM profiles, SD-WAN rules, etc.) and its output should inform, not replace, direct verification against the device. See [`docs/EVALUATION.md`](docs/EVALUATION.md).
 
 ---
 
-## 📁 Project Structure
+## Features
+
+- **Policy evaluation** — submit a source, destination, and service (or a batch CSV of many) and get back ranked candidate policies, scored by coverage, interface alignment, and least-privilege fit
+- **Multi-device inventory** — admins register any number of FortiGate devices, each with its own API host, credentials (encrypted at rest, never displayed again after entry), VDOM, and collection settings
+- **Per-device sync** — a "Sync Now" button runs the collector for a single device on demand, in addition to (or instead of) a scheduled cron job
+- **Device assignment** — admins grant individual client users access to specific devices; a client only ever sees and evaluates against devices they've been assigned, enforced at every entry point (page load, single evaluation, batch evaluation)
+- **Admin panel** — user management, service subscriptions, device inventory, and a blog (categories + posts) with rich-text handling
+- **Session-based auth** with CSRF protection, database-backed login rate limiting, and audit-logged admin actions
+- **Atomic, checksum-verified snapshots** — each collection run is immutable and versioned; the evaluator never reads a snapshot that's still being written
+- **Structured JSON logging**, with an optional Elastic (Elasticsearch/Logstash/Kibana/Filebeat) stack for centralized observability
+- **A second, additive FastAPI service** (`api_v2/`) for genuinely API-shaped integrations, authenticated by API key, sharing the same database as the main app — see [Architecture](#architecture) below
+
+---
+
+## Architecture
+
+Full details, verified against the running codebase rather than written from memory, live in **[`docs/architecture.md`](docs/architecture.md)**. In short:
+
+| Layer | Where |
+|---|---|
+| Web app (admin panel, client UI, session auth) | Flask, `api/app.py` + `admin/`, `client/`, `main/`, `auth/` blueprints |
+| Policy evaluation engine | `engine/` — snapshot loading, CIDR matching, interface selection, ranking |
+| Device collection | `collectors/fortigate_collector.py` (core) + `collectors/sync_service.py` (per-device, admin-triggered) |
+| Data models | `models.py` (Flask-SQLAlchemy, primary schema) + `api_v2/models.py` (plain SQLAlchemy mirror for the FastAPI service) |
+| Schema migrations | `migrations/` — Alembic, the single source of schema truth |
+| Additive API service | `api_v2/` — FastAPI, API-key authenticated, shares the database via `db_url.py` |
+| Logging/observability | `logging_config.py`, `gunicorn_logging.py`, optional `docker-compose.elastic.yml` stack |
+
+---
+
+## Tech stack
+
+- **Python 3.12**, **Flask 3** (Flask-SQLAlchemy, Flask-Login, Flask-WTF, Flask-Migrate/Alembic)
+- **FastAPI** + **Uvicorn** for the additive `api_v2` service
+- **PostgreSQL** in production, **SQLite** as a zero-config local-dev fallback
+- **Gunicorn** as the production WSGI server
+- **Docker Compose** for orchestration; a separate, optional Compose project for the Elastic stack
+- **Pytest** — a broad test suite (166 tests at last count) across models, migrations, collection, evaluation, authorization, and infrastructure
+
+---
+
+## Project structure
 
 ```
-securetrack-lite/
-│
-├── api/                    # Flask Web Application (UI + REST API)
-│   └── app.py
-│
-├── engine/                 # Core evaluation logic
-│   ├── evaluator.py
-│   ├── cidr_tools.py
-│   └── interface_selector.py
-│
-├── templates/              # Web UI HTML templates
-│   ├── index.html
-│   └── results.html
-│
-├── static/                 # Stylesheets, JS, images
-│   └── style.css
-│
-├── data/                   # JSON data pulled from FortiGate
-│   ├── addresses.json
-│   ├── policies.json
-│   └── routes.json
-│
-├── collectors/             # Python REST collector
-│   └── fortigate_collector.py
-│
-├── requirements.txt        # Python dependencies
-└── README.md               # Documentation
+hirkanet/
+├── api/              Flask app factory, login/CSRF/error handling, CLI commands
+├── api_v2/           Additive FastAPI service (plain SQLAlchemy, API-key auth)
+├── admin/            Admin panel routes (users, services, devices, blog)
+├── client/           Client-facing routes (dashboard, policy evaluation) + access control
+├── main/             Public routes (home, blog)
+├── auth/             Login forms, rate limiting
+├── engine/           Evaluation engine, snapshot store, CIDR/interface logic
+├── collectors/       FortiGate REST collector + per-device sync service
+├── validation/       Input validation for admin, evaluation, and upload requests
+├── models.py          Primary Flask-SQLAlchemy schema
+├── db_url.py          Shared DB URL resolution (used by both services)
+├── database_transactions.py   Transaction/error-handling helpers
+├── secret_crypto.py / secret_utils.py / api_keys.py / security.py   Secrets & credential handling
+├── migrations/        Alembic migration history
+├── templates/          Jinja2 templates (admin, client, auth, main, blog)
+├── static/             CSS/JS/images
+├── scripts/            Storage monitoring/retention, Postgres backup/restore
+├── elk/                Elastic stack config (certs, Logstash pipeline)
+├── docs/               Architecture, deployment, database, logging, security docs
+└── tests/              33 test files
 ```
 
 ---
 
-## 🚀 Installation
+## Getting started
 
-### 1. Clone repository
+### Option A — Docker Compose (recommended, closest to production)
+
+**Prerequisites:** Docker, Docker Compose.
 
 ```bash
-git clone https://github.com/your-org/securetrack-lite.git
-cd securetrack-lite
+cp .env.example .env
+chmod 600 .env
+# edit .env: set real values for SECRET_KEY, POSTGRES_PASSWORD,
+# BOOTSTRAP_ADMIN_USERNAME/PASSWORD, and — since it's missing from the
+# template — add DEVICE_CREDENTIAL_KEY yourself (see Configuration below)
 ```
 
-### 2. Install Python environment
+The application container runs as a fixed non-root UID (`10001`). Create and prepare the host-mounted directories before first start — `data/` is a Docker-managed named volume and needs no host setup, but `uploads/` and `static/uploads/` are bind mounts:
 
-Create and activate a venv:
+```bash
+mkdir -p uploads static/uploads/blog backups/postgres
+sudo chown -R 10001:10001 uploads static/uploads
+```
+
+```bash
+docker compose up -d --build
+```
+
+This starts `db` (Postgres), runs `migrate` (schema migrations + default data seeding, one-shot), then starts `app` (the main Flask application, on `127.0.0.1:5000`) and `api_v2` (the FastAPI pilot service, on `127.0.0.1:8010`).
+
+```bash
+docker compose logs migrate --tail=30    # confirm migrations applied cleanly
+docker compose ps -a                     # confirm everything is healthy
+```
+
+Full deployment details — secrets, TLS, backups, storage monitoring — are in [`docs/depoly-readme.md`](docs/depoly-readme.md).
+
+### Option B — Local development without Docker (SQLite)
+
+**Prerequisites:** Python 3.12.
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
+
+export APP_ENV=development
+export SECRET_KEY=dev-secret-key
+export DEVICE_CREDENTIAL_KEY=dev-credential-key
+export BOOTSTRAP_ADMIN_USERNAME=admin
+export BOOTSTRAP_ADMIN_PASSWORD=change-me-please-12
+
+python -m flask --app api.app db upgrade
+python -m flask --app api.app seed-defaults
+python -m flask --app api.app run --debug
 ```
 
-### 3. Collect data from FortiGate
+Open `http://127.0.0.1:5000` and log in with the bootstrap admin credentials above. This uses a local `fortigate_policy.db` SQLite file — no Postgres required.
 
-Create a FortiGate REST API admin/token, then run the collector. It uses FortiOS 6.4.x CMDB endpoints and does not require Ansible.
-
-Using environment variables:
+To also run the FastAPI service locally:
 
 ```bash
-export FORTIGATE_HOST=192.168.1.99
-export FORTIGATE_TOKEN='your-api-token'
-export FORTIGATE_VDOM=root
-python collectors/fortigate_collector.py
+pip install -r requirements-api_v2.txt
+python -m uvicorn api_v2.main:app --port 8010
 ```
 
-This populates:
+---
 
-```
-data/policies.json
-data/addresses.json
-data/services.json
-data/routes.json
-data/interfaces.json
-```
+## Configuration
 
-You can also pass options directly:
+Every environment variable the application reads is documented in **[`.env.example`](.env.example)**, grouped by concern (application runtime, initial admin account, PostgreSQL, Elastic Stack, FortiGate collector). Copy it and fill in real values:
 
 ```bash
-python collectors/fortigate_collector.py \
-  --host 192.168.1.99 \
-  --token 'your-api-token' \
-  --vdom root
+cp .env.example .env
+chmod 600 .env
 ```
 
-TLS verification is disabled by default because many FortiGate management interfaces use self-signed certificates. Add `--verify` when the certificate is trusted by your system.
+> ⚠️ **`DEVICE_CREDENTIAL_KEY` is missing from `.env.example` — this will crash the app.** It encrypts device API keys/credentials at rest and is `required` whenever `APP_ENV=production` (which `.env.example` sets by default). Verified directly: with `APP_ENV=production` and no `DEVICE_CREDENTIAL_KEY` set, saving any device's API key raises `RuntimeError: DEVICE_CREDENTIAL_KEY_FILE or DEVICE_CREDENTIAL_KEY is required` the moment an admin tries to add or edit a device. **Add it to `.env` manually before deploying:**
+> ```
+> DEVICE_CREDENTIAL_KEY=<openssl rand -hex 32>
+> ```
+> Losing or rotating this value afterward makes every already-stored device credential undecryptable.
 
-`routes.json` is built from configured static routes plus the runtime IPv4 routing table at `/api/v2/monitor/router/ipv4`, so learned routes such as OSPF can be used for interface detection. If your REST API admin cannot access the monitor endpoint, the collector warns and still writes the static routes. Use `--skip-monitor-routes` to collect only static routes.
+Other values worth understanding before deploying:
 
-### 4. Start the Web UI
+| Variable | Purpose |
+|---|---|
+| `SECRET_KEY` | Flask session signing |
+| `DEVICE_CREDENTIAL_KEY` | **See warning above — not in the template, must be added manually** |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Database credentials — only take effect the *first* time the `postgres_data` volume is initialized |
+| `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` | The first admin account, created once if no users exist |
+| `ELASTIC_PASSWORD` / `KIBANA_PASSWORD` / `LOGSTASH_PASSWORD` / `KIBANA_*_ENCRYPTION_KEY` | Only needed if running the optional Elastic stack |
+| `FORTIGATE_HOST` / `FORTIGATE_TOKEN` / etc. | Only needed for the legacy standalone collector CLI — device credentials added through the admin panel are stored per-device in the database instead |
 
-From project root:
+---
+
+## Working with devices
+
+1. Log in as an admin and go to **Devices** in the admin panel.
+2. **Add Device** — name, API host, VDOM, and credentials (API key, or username/password for future device types). Credential fields are write-only: once saved, they're never displayed again, and leaving them blank on an edit keeps the existing value.
+3. **Sync Now** to run a collection immediately, or rely on a scheduled cron job calling `collectors/fortigate_collector.py` directly.
+4. **Client Access** to grant specific client users evaluation access to that device.
+5. Clients see only their assigned, active devices in the policy evaluation page's device selector.
+
+Existing single-device installs are migrated forward automatically: the first time the app starts after upgrading, the pre-existing `data/` directory is registered as a device named "Default FortiGate" — no snapshot files are moved.
+
+---
+
+## The additive API service (`api_v2`)
+
+A second, separate FastAPI service for genuinely API-shaped needs (external integrations, not more server-rendered pages) — it does not replace or modify the main Flask application in any way, and shares one database with it via `db_url.py`.
 
 ```bash
-python api/app.py
+# issue an API key for an existing user (prints the raw key once - it cannot be shown again)
+flask --app api.app issue-api-key <username> --label "some integration"
+
+curl http://127.0.0.1:8010/livez
+curl -H "X-API-Key: <key>" http://127.0.0.1:8010/whoami
 ```
 
-Open in browser:
-
-```
-http://127.0.0.1:5000
-```
+This service is under active, incremental development — currently health checks and API-key authentication only. See `docs/architecture.md` section 10 for the current scope and rationale for keeping it additive rather than migrating the whole application.
 
 ---
 
-## 🐳 Docker
-
-Build and run the web app with Docker:
+## Testing
 
 ```bash
-docker build -t securetrack-lite .
-docker run --rm -p 5000:5000 securetrack-lite
+export SECRET_KEY=testkey APP_ENV=development DEVICE_CREDENTIAL_KEY=testcredkey
+pytest tests/ -q
 ```
 
-Open:
+`requirements.txt` includes everything needed to run the suite (`pytest`, `PyYAML` for the tests that parse `docker-compose.yml` directly, etc.) — no separate test-dependencies file.
 
-```
-http://127.0.0.1:5000
-```
+---
 
-For local development with Docker:
+## Logging & observability
+
+Structured JSON logs by default (`LOG_FORMAT=json`, gated by `LOG_LEVEL`). An optional, separate Compose project brings up a full Elastic stack (Elasticsearch, Logstash, Kibana, Filebeat) with mutual TLS between components:
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.elastic.yml up -d --build
 ```
 
-Device snapshots and PostgreSQL data are stored in named Docker volumes (`hirkanet-app_hirkanet_data`, `hirkanet-app_postgres_data`). To inspect snapshot files:
-
-```bash
-docker run --rm -v hirkanet-app_hirkanet_data:/data alpine find /data -name "*.json" | head -10
-```
-
-The container runs the Flask app with Gunicorn on port `5000` and includes a `/healthz` endpoint for Docker health checks.
+See [`docs/ELK-SETUP.md`](docs/ELK-SETUP.md) and [`docs/LOGGING-GUIDE.md`](docs/LOGGING-GUIDE.md).
 
 ---
 
-## 🖥️ Web UI Usage
+## Documentation index
 
-Enter:
+| Doc | Covers |
+|---|---|
+| [`architecture.md`](docs/architecture.md) | Full system architecture, verified against the running code |
+| [`depoly-readme.md`](docs/depoly-readme.md) | Deployment: secrets, directories, first-time setup |
+| [`database-readme.md`](docs/database-readme.md) | Migrations, backup, retention, PostgreSQL operations |
+| [`DATABASE-MIGRATIONS.md`](docs/DATABASE-MIGRATIONS.md) | Alembic migration workflow |
+| [`FORTIGATE-SNAPSHOTS.md`](docs/FORTIGATE-SNAPSHOTS.md) | Atomic snapshot storage design |
+| [`EVALUATION.md`](docs/EVALUATION.md) | What the evaluation engine does and doesn't model |
+| [`USER_MANUAL.md`](docs/USER_MANUAL.md) | End-user guide to the web application |
+| [`HTTPS-DEPLOYMENT.md`](docs/HTTPS-DEPLOYMENT.md) | TLS/reverse-proxy setup |
+| [`LOGGING-GUIDE.md`](docs/LOGGING-GUIDE.md) / [`ELK-SETUP.md`](docs/ELK-SETUP.md) | Logging pipeline and the optional Elastic stack |
+| [`STORAGE-MONITORING.md`](docs/STORAGE-MONITORING.md) | Disk usage monitoring and retention policy |
+| [`POSTGRES-BACKUP-RESTORE.md`](docs/POSTGRES-BACKUP-RESTORE.md) | Backup and restore procedures |
+| [`LOGIN-RATE-LIMITING-CHANGES.md`](docs/LOGIN-RATE-LIMITING-CHANGES.md) | Login rate limiting design |
+| [`COMPOSE-DEPLOYMENT.md`](docs/COMPOSE-DEPLOYMENT.md) | Why the app and Elastic stack are split into two Compose projects |
+| [`MULTI-VENDOR-PLAN.md`](docs/MULTI-VENDOR-PLAN.md) | Planning notes for multi-vendor device support |
+| [`similar-projects.md`](docs/similar-projects.md) | Comparable tools in the network security/observability space |
 
-- Source IPs, subnets, or address object names
-- Destination IPs, subnets, or address object names
-- Services (FortiGate service names)
-
-Example:
-
-```
-Sources: 192.168.10.25,192.168.0.0/24
-Destinations: 10.10.10.15
-Services: tcp-443,tcp-8443
-```
-
-The UI displays:
-
-- The **best-matching policy**
-- A complete **scored ranking** of all FortiGate policies
-- Source, destination, and service match counts
-- Interfaces (src → dst)
-- Penalties for wide rules (like `all`)
+`docs/README.md` predates the multi-device, admin panel, and API-service work described above and is kept only for history — this file is the current entry point.
 
 ---
 
-## 🔌 REST API (Automation)
+## Known limitations
 
-The engine exposes a JSON endpoint:
-
-### POST /evaluate
-
-**URL**
-
-```
-http://127.0.0.1:5000/evaluate
-```
-
-**Body**
-
-```json
-{
-  "src": ["192.168.1.10"],
-  "dst": ["10.10.10.50"],
-  "services": ["tcp-443"]
-}
-```
-
-**Response example**
-
-```json
-[
-  {
-    "policyid": 12,
-    "name": "Allow-HTTPS",
-    "score": 113,
-    "src_matches": 1,
-    "dst_matches": 1,
-    "srv_matches": 1,
-    "srcintf": ["port1"],
-    "dstintf": ["port2"]
-  }
-]
-```
+A concrete, actively-maintained list — not vague "future work" — lives in `docs/architecture.md` section 11, and currently includes items such as synchronous device sync's worker-timeout risk at scale, Docker secrets not yet being wired up for the main app stack, and some orphaned legacy code pending removal. Worth reading before relying on this in a security-sensitive production deployment.
 
 ---
 
-## 🧠 How the Scoring Works
+## License
 
-Policies are ranked with a **least‑privilege** scoring model:
-
-| Condition                              | Score |
-|----------------------------------------|-------|
-| Per matching source subnet             | +40   |
-| Per matching destination subnet        | +40   |
-| Per matching service                   | +20   |
-| `all` usage                            | −15   |
-| Each extra source/destination object   | −2    |
-| Each extra service object              | −1    |
-
-The best policy is the one with the **highest score**.
-
----
-
-## 🔍 CIDR Matching Logic
-
-Implemented via Python's `ipaddress`:
-
-- Any user‑provided IP is converted to a `/32`
-- Containment tested using `.subnet_of()`
-- Address ranges, subnets, and host objects are normalized
-
----
-
-## 🔁 Interface Auto‑Detection
-
-The engine reads `routes.json` and picks:
-
-- Longest-prefix match route
-- Corresponding outgoing interface
-
-When `routes.json` includes monitor routes, static and learned routes are considered together.
-
-This helps validate whether the traffic path even matches the policy.
-
----
-
-## 🏗️ Extending the Engine
-
-The code is modular:
-
-- Add new scoring rules
-- Add shadow/overlap detection
-- Integrate more FortiGate objects
-- Add simulated policy-change output
-- Add risk scoring
-
----
-
-## 🛠️ Troubleshooting
-
-### Engine shows "0 policies"
-
-Check:
-
-```
-data/policies.json
-data/addresses.json
-data/routes.json
-```
-
-If empty → rerun collectors.
-
-### Services do not match
-
-Ensure service names match FortiGate names exactly (e.g., `HTTPS`, `tcp-443`, etc.)
-
----
-
-## 📄 License
-
-<!-- Add your license information here -->
+No license file is currently present in this repository. Treat all rights as reserved until one is added.
