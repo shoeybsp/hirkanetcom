@@ -15,7 +15,9 @@ def load(path):
 def test_application_compose_contains_app_database_and_migration_job():
     compose = load(APP_FILE)
     assert compose["name"] == "hirkanet-app"
-    assert set(compose["services"]) == {"app", "db", "migrate"}
+    # api_v2 is the additive FastAPI pilot service (docs/architecture.md) -
+    # sharing the same database as app/migrate, not replacing them.
+    assert set(compose["services"]) == {"app", "db", "migrate", "api_v2"}
     assert set(compose["networks"]) == {"app-db", "frontend"}
 
 

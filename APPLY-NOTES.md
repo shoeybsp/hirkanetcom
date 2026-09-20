@@ -1,49 +1,103 @@
-# Housekeeping patch (supersedes hirkanet-permission-fix.zip and
-# hirkanet-architecture-update.zip - use this one instead of those)
+# FastAPI migration - Phase 1, verified against your actual uploaded codebase
 
-Four files, all drop-in replacements:
+Unlike earlier phases, this was NOT built against a hand-reconstruction -
+your hirkanetcom.zip was unzipped, these exact changes applied on top of
+it, and both the test suite and a live server were run directly against
+your real files. docker-compose.yml here is your real file with the
+api_v2 block added, not a transcription.
 
-    Dockerfile               pinned uid/gid 10001 + explicit data/uploads/
-                              static-uploads dir creation
-    requirements.txt          + PyYAML==6.0.3 (missing test dependency)
-    docs/architecture.md      rewritten to reflect current codebase +
-                              the named-volume data mount
-    docs/depoly-readme.md     corrected first-time setup instructions for
-                              the named-volume data mount
+## One pre-existing bug found and fixed, unrelated to this phase
+
+tests/test_app_container_hardening.py::test_only_declared_runtime_paths_are_writable
+was already failing in your repo before I touched anything - it still
+asserted the old bind-mount form (./data:/app/data), never updated after
+your own "change bind docker volume to named volume" commit. Confirmed via
+a from-scratch pytest run before any Phase 1 changes: 22 failures, not the
+usual 21. Fixed to check for hirkanet_data:/app/data instead; confirmed
+this is the only test with that stale assumption.
+
+## New files (11)
+
+    db_url.py
+    api_keys.py
+    api_v2/__init__.py
+    api_v2/db.py
+    api_v2/models.py
+    api_v2/access.py
+    api_v2/auth.py
+    api_v2/main.py
+    Dockerfile.api_v2
+    requirements-api_v2.txt
+    migrations/versions/20260803_0006_api_keys.py
+    tests/test_api_v2_auth.py
+
+## Modified files (6)
+
+    models.py                             + ApiKey model; init_db now calls
+                                            db_url.resolve_database_url()
+    api/app.py                            + click import; + issue-api-key
+                                            CLI command
+    docker-compose.yml                    + api_v2 service (your db/migrate/
+                                            app services and volumes/networks
+                                            blocks are untouched)
+    tests/test_secret_configuration.py    updated for db_url.py relocation
+    tests/test_compose_split.py           updated for the new api_v2 service
+    tests/test_app_container_hardening.py the pre-existing fix described above
+
+## Deliberately NOT included
+
+    .env and secrets/*         contain your live secret values; already
+                                correct on your end, no reason to route
+                                them through this delivery
+    .git, __pycache__, etc.    not touched, no reason to re-deliver
 
 ## Apply
 
-    cp Dockerfile /path/to/hirkanet/Dockerfile
-    cp requirements.txt /path/to/hirkanet/requirements.txt
-    cp docs/architecture.md /path/to/hirkanet/docs/architecture.md
-    cp docs/depoly-readme.md /path/to/hirkanet/docs/depoly-readme.md
+    cp db_url.py api_keys.py models.py Dockerfile.api_v2 \
+       requirements-api_v2.txt docker-compose.yml /path/to/hirkanetcom/
+    cp api/app.py /path/to/hirkanetcom/api/
+    cp -r api_v2 /path/to/hirkanetcom/
+    cp migrations/versions/20260803_0006_api_keys.py \
+       /path/to/hirkanetcom/migrations/versions/
+    cp tests/test_api_v2_auth.py tests/test_secret_configuration.py \
+       tests/test_compose_split.py tests/test_app_container_hardening.py \
+       /path/to/hirkanetcom/tests/
 
-## What changed and why (chronological)
+Since docker-compose.yml here IS your real file plus the api_v2 block
+(not a reconstruction this time), it's safe to overwrite directly -
+though diffing first is never a bad habit.
 
-1. Dockerfile: pinned the container user to uid=10001, gid=10001 (was
-   auto-assigned by the base image, unstable across rebuilds) - fixes
-   "Sync Now" failing with a bind-mount permission error.
-2. requirements.txt: added PyYAML, which several tests need to parse
-   docker-compose.yml directly. It was missing entirely; only appeared to
-   work in prior testing because an unrelated tool pulled it in as a
-   transitive dependency. Verified broken from, and then fixed in, a
-   genuinely clean venv.
-3. Dockerfile: added explicit `mkdir -p /app/data /app/uploads
-   /app/static/uploads` before the chown, so those paths reliably exist
-   in the image with correct ownership on every build - needed once
-   `data` became a named volume (see next point), since Docker only
-   auto-populates a named volume's ownership from a path that already
-   exists in the image.
-4. docs/depoly-readme.md + architecture.md: updated to describe the real,
-   current setup after `data` was switched from a host bind mount to the
-   named volume `hirkanet_data:/app/data` in docker-compose.yml - data
-   needs no host-side chown anymore; uploads/static-uploads still do.
+## What was verified, against these exact files, not a copy
 
-## On your machine
+- Established true baseline first: fresh pytest run on your untouched
+  upload showed 22 failures (the extra one being the pre-existing bug
+  above) - confirmed BEFORE making any changes, so credit/blame is
+  correctly attributed.
+- After applying: 145 passed, 21 failed (back to the known baseline, the
+  8 new api_v2 tests now passing).
+- Ran the full Alembic chain from scratch through 20260803_0006 with no
+  errors, using your actual migrations/ directory.
+- Started a real uvicorn process against your actual models.py/api_v2
+  code and a freshly migrated database. Verified live: missing key -> 401,
+  wrong key -> 401, valid key -> 200 with correct user (admin, id=1),
+  last_used_at written and confirmed via Flask's ORM, and - critically -
+  revoked the key through Flask's ORM while the FastAPI process was still
+  running, and confirmed it was rejected on the very next request with no
+  restart.
+- docker-compose.yml YAML-validated and confirmed to declare exactly
+  {app, db, migrate, api_v2}.
 
-    docker compose down
-    sudo chown -R 10001:10001 ./uploads ./static/uploads
-    docker compose up -d --build
-    docker compose exec app id                 # uid=10001(app) gid=10001(app)
-    docker volume ls | grep hirkanet            # hirkanet-app_hirkanet_data
-    pip install -r requirements.txt             # if running tests locally, picks up PyYAML
+## What's still NOT verified (same caveat as before)
+
+No Docker daemon available in this environment, so `docker compose up
+--build` itself - both images actually building, healthchecks passing
+inside real containers - has not been run. Everything above was verified
+via a bare venv + uvicorn process + SQLite, which exercises the same code
+paths but not the container layer itself. Worth watching
+`docker compose logs migrate` and `docker compose logs api_v2` on your
+first real `--build` the way the pre-flight checklist described.
+
+## Next: Phase 2
+
+The actual pilot endpoint - POST /api_v2/devices/{id}/sync - wired to
+collectors/sync_service.py::run_device_sync. Not included here.

@@ -36,7 +36,10 @@ def test_application_tmp_is_small_and_hardened():
 
 def test_only_declared_runtime_paths_are_writable():
     volumes = _app_config()["volumes"]
-    assert "./data:/app/data" in volumes
+    # data is a Docker-managed named volume (not a host bind mount) since
+    # the switch documented in docs/depoly-readme.md and architecture.md
+    # section 7 - its ownership comes from the image, not the host.
+    assert "hirkanet_data:/app/data" in volumes
     assert "./uploads:/app/uploads" in volumes
     assert "./static/uploads:/app/static/uploads" in volumes
     assert not any(volume.endswith(":/app") for volume in volumes)

@@ -1,6 +1,8 @@
 import logging
 import os
 import sys
+
+import click
 from flask import Flask, render_template, jsonify, redirect, url_for, flash, request, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, CSRFError
@@ -99,6 +101,43 @@ def seed_defaults_command():
     """Create the optional bootstrap administrator and default content."""
     seed_defaults()
     print("Hirkanet default data is present.")
+
+
+@app.cli.command("issue-api-key")
+@click.argument("username")
+@click.option("--label", default=None, help="Optional human-readable label for this key")
+def issue_api_key_command(username, label):
+    """Issue a new API key for an existing user, printing the raw key once.
+
+    The raw key is never stored - only its SHA-256 hash is - so this is
+    the only time it can be retrieved. Losing it means issuing a new one.
+    """
+    from models import User, ApiKey
+    from api_keys import generate_api_key, hash_api_key
+
+    user = User.query.filter_by(username=username.strip().lower()).first()
+    if user is None:
+        click.echo(f"No such user: {username}", err=True)
+        raise SystemExit(1)
+
+    raw_key = generate_api_key()
+    key = ApiKey(user_id=user.id, key_hash=hash_api_key(raw_key), label=label)
+    db.session.add(key)
+    commit_transaction("issue API key")
+
+    logger.info(
+        "API key issued",
+        extra={
+            "event_type": "audit_api_key_issued",
+            "target_user_id": str(user.id),
+            "target_username": user.username,
+            "api_key_id": str(key.id),
+        },
+    )
+
+    click.echo(f"API key for '{user.username}' (id={key.id}):")
+    click.echo(raw_key)
+    click.echo("Store this now - it cannot be shown again.")
 
 @app.template_filter("nl2p")
 def nl2p(text):

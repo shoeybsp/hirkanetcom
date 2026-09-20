@@ -125,6 +125,50 @@ services:
       - frontend
     logging: *default-logging
 
+  api_v2:
+    build:
+      context: .
+      dockerfile: Dockerfile.api_v2
+    restart: unless-stopped
+    cpus: "0.5"
+    mem_limit: 384m
+    mem_reservation: 128m
+    pids_limit: 256
+    labels:
+      hirkanet_log_role: application
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    ports:
+      - 127.0.0.1:8010:8010
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/readyz', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - app-db
+      - frontend
+    logging: *default-logging
+
 volumes:
   postgres_data:
     name: hirkanet-app_postgres_data

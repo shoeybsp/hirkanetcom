@@ -40,11 +40,12 @@ def test_application_supports_file_based_secrets():
     import re
 
     app = (ROOT / "api/app.py").read_text()
+    db_url_module = (ROOT / "db_url.py").read_text()
     models = (ROOT / "models.py").read_text()
     assert re.search(r'read_secret\(\s*"SECRET_KEY"', app)
-    assert re.search(r'read_secret\(\s*"POSTGRES_PASSWORD"', models)
+    assert re.search(r'read_secret\(\s*"POSTGRES_PASSWORD"', db_url_module)
     assert re.search(r'read_secret\(\s*"BOOTSTRAP_ADMIN_PASSWORD"', models)
-    assert "URL.create(" in models
+    assert "URL.create(" in db_url_module
 
 
 def test_real_secret_files_are_ignored():

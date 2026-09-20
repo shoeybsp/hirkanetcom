@@ -1,11 +1,10 @@
 import logging
 import os
 from datetime import datetime, timezone
-from urllib.parse import urlparse
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from sqlalchemy import URL, event, text
+from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 
 from secret_utils import read_secret
@@ -258,6 +257,43 @@ class DeviceAssignment(db.Model):
         )
 
 
+class ApiKey(db.Model):
+    """A programmatic credential for the FastAPI service, tied to an
+    existing User rather than a separate identity concept, so authorization
+    (e.g. has_device_access) has exactly one source of truth regardless of
+    whether the caller is the web UI or the API.
+
+    Only key_hash (SHA-256 of the raw key) is ever stored - the raw key is
+    shown once at issuance time and cannot be recovered. SHA-256 rather
+    than the scrypt-based hashing in security.py is deliberate: API keys
+    are already high-entropy random tokens, not user-chosen secrets, so
+    slow password hashing adds CPU cost per request without adding
+    security here.
+    """
+
+    __tablename__ = "api_keys"
+    __table_args__ = (
+        db.Index("ix_api_keys_user_id", "user_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    key_hash = db.Column(db.String(64), unique=True, nullable=False)  # hex-encoded SHA-256
+    label = db.Column(db.String(200), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)  # NULL = active
+
+    user = db.relationship("User")
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None
+
+    def __repr__(self):
+        return f"<ApiKey id={self.id} user={self.user_id} active={self.is_active}>"
+
+
 def slugify(value):
     """Turn a title into a URL-safe slug (no external deps required)."""
     import re
@@ -336,78 +372,15 @@ class BlogPost(db.Model):
         return f"<BlogPost {self.title!r} ({self.status})>"
 
 
-def _default_database_url():
-    """Return a local SQLite database path when no database URL is configured."""
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
-    return f"sqlite:///{os.path.join(repo_dir, 'fortigate_policy.db')}"
-
-
-def _normalize_database_url(database_url):
-    """Normalize SQLite URLs to a form accepted by SQLAlchemy."""
-    if not database_url.startswith("sqlite"):
-        return database_url
-
-    parsed = urlparse(database_url)
-    if parsed.scheme != "sqlite":
-        return database_url
-
-    if not parsed.path or parsed.path == ":memory:" or parsed.path == "/:memory:":
-        return "sqlite:///:memory:"
-
-    if os.path.isabs(parsed.path):
-        return f"sqlite:////{parsed.path.lstrip('/')}"
-
-    return f"sqlite:///{parsed.path}"
-
-
-def _ensure_database_path(database_url):
-    """Create parent directories for SQLite database files before connecting."""
-    if not database_url.startswith("sqlite"):
-        return
-
-    parsed = urlparse(database_url)
-    database_path = parsed.path
-    if not database_path or database_path == ":memory:" or database_path == "/:memory:":
-        return
-
-    parent_dir = os.path.dirname(database_path)
-    if parent_dir:
-        os.makedirs(parent_dir, exist_ok=True)
-
-
 def init_db(app):
     """Configure SQLAlchemy and verify database connectivity."""
 
     import time
     from sqlalchemy.exc import OperationalError
 
-    configured_url = os.environ.get("DATABASE_URL")
+    from db_url import resolve_database_url
 
-    if configured_url:
-        database_url = _normalize_database_url(configured_url)
-        _ensure_database_path(database_url)
-
-    elif os.getenv("POSTGRES_HOST"):
-        # Keep this as a SQLAlchemy URL object.
-        # Converting it with str() masks the password as "***".
-        database_url = URL.create(
-            "postgresql+psycopg2",
-            username=os.getenv("POSTGRES_USER"),
-            password=read_secret(
-                "POSTGRES_PASSWORD",
-                required=True,
-            ),
-            host=os.getenv("POSTGRES_HOST", "db"),
-            port=int(os.getenv("POSTGRES_PORT", "5432")),
-            database=os.getenv("POSTGRES_DB"),
-        )
-
-    else:
-        database_url = _default_database_url()
-        database_url = _normalize_database_url(database_url)
-        _ensure_database_path(database_url)
-
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_DATABASE_URI"] = resolve_database_url()
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
