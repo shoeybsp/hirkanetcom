@@ -7,37 +7,6 @@ x-docker-logging: &default-logging
     max-file: "5"
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    cpus: "1.0"
-    mem_limit: 768m
-    mem_reservation: 256m
-    pids_limit: 256
-    labels:
-      hirkanet_log_role: database
-    env_file:
-      - .env
-    environment:
-      TZ: Europe/Riga
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          pg_isready
-          --host=127.0.0.1
-          --username="$${POSTGRES_USER}"
-          --dbname="$${POSTGRES_DB}"
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-    networks:
-      - app-db
-    logging: *default-logging
-
   migrate:
     build:
       context: .
@@ -47,16 +16,13 @@ services:
     mem_limit: 384m
     mem_reservation: 96m
     pids_limit: 128
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - .env
     environment:
-      POSTGRES_HOST: db
-      POSTGRES_PORT: "5432"
       TRUST_PROXY_HEADERS: "false"
       SERVICE_NAME: hirkanet-migrate
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -67,9 +33,29 @@ services:
     command:
       - /bin/sh
       - -ec
-      - flask --app api.app db upgrade && flask --app api.app seed-defaults
+      - |
+        python -c "
+        import time, os, psycopg2
+        for _ in range(60):
+            try:
+                psycopg2.connect(
+                    host='host.docker.internal',
+                    port=int(os.environ.get('POSTGRES_PORT', '5432')),
+                    user=os.environ['POSTGRES_USER'],
+                    password=os.environ['POSTGRES_PASSWORD'],
+                    dbname=os.environ['POSTGRES_DB'],
+                )
+                print('PostgreSQL is ready.')
+                break
+            except psycopg2.OperationalError:
+                print('Waiting for PostgreSQL...')
+                time.sleep(1)
+        else:
+            raise SystemExit('PostgreSQL did not become ready in time')
+        "
+        flask --app api.app db upgrade && flask --app api.app seed-defaults
     networks:
-      - app-db
+      - frontend
     logging: *default-logging
 
   app:
@@ -88,9 +74,8 @@ services:
         condition: service_completed_successfully
     env_file:
       - .env
-    environment:
-      POSTGRES_HOST: db
-      POSTGRES_PORT: "5432"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - 127.0.0.1:5000:5000
     init: true
@@ -121,7 +106,6 @@ services:
       retries: 20
       start_period: 30s
     networks:
-      - app-db
       - frontend
     logging: *default-logging
 
@@ -141,9 +125,8 @@ services:
         condition: service_completed_successfully
     env_file:
       - .env
-    environment:
-      POSTGRES_HOST: db
-      POSTGRES_PORT: "5432"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - 127.0.0.1:8010:8010
     init: true
@@ -165,18 +148,13 @@ services:
       retries: 20
       start_period: 30s
     networks:
-      - app-db
       - frontend
     logging: *default-logging
 
 volumes:
-  postgres_data:
-    name: hirkanet-app_postgres_data
   hirkanet_data:
     # Named volume for application data; Docker will own it with UID 10001
 
 networks:
-  app-db:
-    driver: bridge
   frontend:
     driver: bridge

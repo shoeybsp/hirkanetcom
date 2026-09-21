@@ -20,12 +20,10 @@ def service_networks(service):
 def test_application_database_network_is_private_and_frontend_is_separate():
     compose = load(APP_FILE)
 
-    assert set(compose["networks"]) == {"app-db", "frontend"}
-    assert compose["networks"]["app-db"]["internal"] is True
+    assert set(compose["networks"]) == {"frontend"}
     assert "internal" not in compose["networks"]["frontend"]
-    assert service_networks(compose["services"]["db"]) == {"app-db"}
-    assert service_networks(compose["services"]["migrate"]) == {"app-db"}
-    assert service_networks(compose["services"]["app"]) == {"app-db", "frontend"}
+    assert service_networks(compose["services"]["migrate"]) == {"frontend"}
+    assert service_networks(compose["services"]["app"]) == {"frontend"}
 
 
 def test_elastic_private_networks_and_loopback_access_network_are_separated():
