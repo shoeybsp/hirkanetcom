@@ -1,118 +1,81 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{% if post %}Edit Post{% else %}Create Post{% endif %} - SecureTrack-Lite</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-</head>
-<body>
-<div class="container py-4 main-container">
+{% extends "admin/base.html" %}
 
-    <header class="stl-header mb-4">
-        <div class="stl-brand">
-            <div>
-                <h1 class="stl-title">{% if post %}Edit Post{% else %}Create Post{% endif %}</h1>
+{% block title %}{% if post %}Edit Post{% else %}Create Post{% endif %} - Hirkanet{% endblock %}
+{% block page_title %}{% if post %}Edit Post{% else %}Create Post{% endif %}{% endblock %}
+
+{% block content %}
+
+<div class="card hk-card">
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Title</label>
+                <input type="text" name="title" class="form-control"
+                       value="{{ post.title if post else '' }}" placeholder="e.g. Why Least-Privilege Firewall Rules Still Get Ignored" required>
+                {% if post %}
+                <div class="form-text">Slug: <code>{{ post.slug }}</code> (only changes if you edit the title)</div>
+                {% endif %}
             </div>
-        </div>
-        <div class="stl-user-nav">
-            <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
-            <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link">Devices</a>
-            <a href="{{ url_for('admin.blog_post_list') }}" class="stl-nav-link">Blog Posts</a>
-            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
 
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">Category</label>
+                    <select name="category_id" class="form-select">
+                        <option value="">— Uncategorized —</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if post and post.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="draft" {% if post and post.status == 'draft' %}selected{% endif %}>Draft</option>
+                        <option value="published" {% if post and post.status == 'published' %}selected{% endif %}>Published</option>
+                    </select>
+                    <div class="form-text">Published posts appear on the public blog immediately.</div>
+                </div>
+            </div>
 
-                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Excerpt</label>
+                <textarea name="excerpt" class="form-control" rows="2" maxlength="400"
+                          placeholder="One or two sentences shown on blog cards and previews.">{{ post.excerpt if post else '' }}</textarea>
+            </div>
 
-            </form>
-        </div>
-    </header>
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Content</label>
+                <textarea name="content" class="form-control" rows="14"
+                          placeholder="Write in plain paragraphs. Leave a blank line between paragraphs — that's how they'll be separated on the page."
+                          required>{{ post.content if post else '' }}</textarea>
+                <div class="form-text">Plain text only (no HTML). Separate paragraphs with a blank line.</div>
+            </div>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    {% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="mb-4">
+                <label class="form-label fw-semibold label-color">Cover Image</label>
+                {% if post and post.cover_image %}
+                <div class="mb-2" style="max-width:320px; border-radius:12px; overflow:hidden; border:1px solid var(--stl-border);">
+                    <img src="{{ post.cover_image }}" alt="Current cover" style="width:100%; display:block;">
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="remove_cover" id="remove_cover">
+                    <label class="form-check-label" for="remove_cover">Remove current cover image</label>
+                </div>
+                {% endif %}
+                <input type="file" name="cover_image" class="form-control" accept=".png,.jpg,.jpeg,.gif,.webp">
+                <div class="form-text">
+                    Optional. PNG, JPG, GIF, or WEBP. If left empty, the post shows a generated pattern instead.
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                {% if post %}Save Changes{% else %}Create Post{% endif %}
+            </button>
+            <a href="{{ url_for('admin.blog_post_list') }}" class="btn btn-secondary">Cancel</a>
+        </form>
     </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    <div class="card stl-card">
-        <div class="card-body">
-            <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Title</label>
-                    <input type="text" name="title" class="form-control stl-input"
-                           value="{{ post.title if post else '' }}" placeholder="e.g. Why Least-Privilege Firewall Rules Still Get Ignored" required>
-                    {% if post %}
-                    <div class="form-text stl-help-text">Slug: <code>{{ post.slug }}</code> (only changes if you edit the title)</div>
-                    {% endif %}
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">Category</label>
-                        <select name="category_id" class="form-select stl-input">
-                            <option value="">— Uncategorized —</option>
-                            {% for cat in categories %}
-                            <option value="{{ cat.id }}" {% if post and post.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">Status</label>
-                        <select name="status" class="form-select stl-input">
-                            <option value="draft" {% if post and post.status == 'draft' %}selected{% endif %}>Draft</option>
-                            <option value="published" {% if post and post.status == 'published' %}selected{% endif %}>Published</option>
-                        </select>
-                        <div class="form-text stl-help-text">Published posts appear on the public blog immediately.</div>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Excerpt</label>
-                    <textarea name="excerpt" class="form-control stl-input" rows="2" maxlength="400"
-                              placeholder="One or two sentences shown on blog cards and previews.">{{ post.excerpt if post else '' }}</textarea>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Content</label>
-                    <textarea name="content" class="form-control stl-input" rows="14"
-                              placeholder="Write in plain paragraphs. Leave a blank line between paragraphs — that's how they'll be separated on the page."
-                              required>{{ post.content if post else '' }}</textarea>
-                    <div class="form-text stl-help-text">Plain text only (no HTML). Separate paragraphs with a blank line.</div>
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label fw-semibold label-color">Cover Image</label>
-                    {% if post and post.cover_image %}
-                    <div class="mb-2" style="max-width:320px; border-radius:12px; overflow:hidden; border:1px solid var(--stl-border);">
-                        <img src="{{ post.cover_image }}" alt="Current cover" style="width:100%; display:block;">
-                    </div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="remove_cover" id="remove_cover">
-                        <label class="form-check-label stl-help-text" for="remove_cover">Remove current cover image</label>
-                    </div>
-                    {% endif %}
-                    <input type="file" name="cover_image" class="form-control stl-input" accept=".png,.jpg,.jpeg,.gif,.webp">
-                    <div class="form-text stl-help-text">
-                        Optional. PNG, JPG, GIF, or WEBP. If left empty, the post shows a generated pattern instead.
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary stl-btn-primary">
-                    {% if post %}Save Changes{% else %}Create Post{% endif %}
-                </button>
-                <a href="{{ url_for('admin.blog_post_list') }}" class="btn btn-secondary">Cancel</a>
-            </form>
-        </div>
-    </div>
-
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+
+{% endblock %}

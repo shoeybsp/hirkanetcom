@@ -1,159 +1,123 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{% if device %}Edit Device{% else %}Add Device{% endif %} - SecureTrack-Lite</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-</head>
-<body>
-<div class="container py-4 main-container">
+{% extends "admin/base.html" %}
 
-    <header class="stl-header mb-4">
-        <div class="stl-brand">
-            <div>
-                <h1 class="stl-title">{% if device %}Edit Device{% else %}Add Device{% endif %}</h1>
-                {% if device %}<p class="stl-subtitle">{{ device.name }}</p>{% endif %}
+{% block title %}{% if device %}Edit Device{% else %}Add Device{% endif %} - Hirkanet{% endblock %}
+{% block page_title %}{% if device %}Edit Device{% else %}Add Device{% endif %}{% endblock %}
+{% block page_subtitle %}{{ device.name if device else '' }}{% endblock %}
+
+{% block content %}
+
+<div class="card hk-card">
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <h2 class="hk-section-title h5">Identification</h2>
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Device Name</label>
+                <input type="text" name="name" class="form-control"
+                       value="{{ device.name if device else '' }}"
+                       placeholder="e.g. HQ FortiGate, Branch Office FGT" required>
             </div>
-        </div>
-        <div class="stl-user-nav">
-            <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
-            <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link">Devices</a>
-            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Device Type</label>
+                <select name="device_type" class="form-select">
+                    <option value="fortigate" {% if not device or device.device_type == 'fortigate' %}selected{% endif %}>FortiGate</option>
+                </select>
+                <div class="form-text">More device types may be added later.</div>
+            </div>
 
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <hr class="my-4">
 
-                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
-
-            </form>
-        </div>
-    </header>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    {% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    <div class="card stl-card">
-        <div class="card-body">
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <h2 class="stl-section-title h5">Identification</h2>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Device Name</label>
-                    <input type="text" name="name" class="form-control stl-input"
-                           value="{{ device.name if device else '' }}"
-                           placeholder="e.g. HQ FortiGate, Branch Office FGT" required>
+            <h2 class="hk-section-title h5">Connection</h2>
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label class="form-label fw-semibold label-color">API Host / IP</label>
+                    <input type="text" name="api_host" class="form-control"
+                           value="{{ device.api_host if device else '' }}"
+                           placeholder="e.g. 192.168.1.99" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Device Type</label>
-                    <select name="device_type" class="form-select stl-input">
-                        <option value="fortigate" {% if not device or device.device_type == 'fortigate' %}selected{% endif %}>FortiGate</option>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold label-color">Scheme</label>
+                    <select name="api_scheme" class="form-select">
+                        <option value="https" {% if not device or device.api_scheme == 'https' %}selected{% endif %}>https</option>
+                        <option value="http" {% if device and device.api_scheme == 'http' %}selected{% endif %}>http</option>
                     </select>
-                    <div class="form-text stl-help-text">More device types may be added later.</div>
                 </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">VDOM</label>
+                    <input type="text" name="vdom" class="form-control"
+                           value="{{ device.vdom if device else 'root' }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">Timeout (seconds)</label>
+                    <input type="number" name="timeout_seconds" class="form-control" min="5" max="300"
+                           value="{{ device.timeout_seconds if device else 30 }}">
+                </div>
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" name="verify_ssl" class="form-check-input" id="verifySsl"
+                       {% if device and device.verify_ssl %}checked{% endif %}>
+                <label class="form-check-label label-color" for="verifySsl">Verify TLS certificate</label>
+                <div class="form-text">Leave unchecked if the device uses a self-signed certificate.</div>
+            </div>
 
-                <hr class="my-4">
+            <hr class="my-4">
 
-                <h2 class="stl-section-title h5">Connection</h2>
-                <div class="row">
-                    <div class="col-md-8 mb-3">
-                        <label class="form-label fw-semibold label-color">API Host / IP</label>
-                        <input type="text" name="api_host" class="form-control stl-input"
-                               value="{{ device.api_host if device else '' }}"
-                               placeholder="e.g. 192.168.1.99" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label fw-semibold label-color">Scheme</label>
-                        <select name="api_scheme" class="form-select stl-input">
-                            <option value="https" {% if not device or device.api_scheme == 'https' %}selected{% endif %}>https</option>
-                            <option value="http" {% if device and device.api_scheme == 'http' %}selected{% endif %}>http</option>
-                        </select>
-                    </div>
+            <h2 class="hk-section-title h5">Credentials</h2>
+            {% if device %}
+            <p class="form-text text-muted mb-3">Credential fields are write-only and never displayed. Leave a field blank to keep its currently stored value.</p>
+            {% endif %}
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">API Key {% if not device %}<span class="text-danger">*</span>{% endif %}</label>
+                <input type="password" name="api_key" class="form-control" autocomplete="new-password"
+                       placeholder="{% if device %}Leave blank to keep the current key{% else %}FortiGate REST API token{% endif %}">
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">Username <span class="text-muted">(optional)</span></label>
+                    <input type="text" name="auth_username" class="form-control" autocomplete="off"
+                           placeholder="{% if device %}Leave blank to keep the current value{% else %}Reserved for future device types{% endif %}">
                 </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">VDOM</label>
-                        <input type="text" name="vdom" class="form-control stl-input"
-                               value="{{ device.vdom if device else 'root' }}">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">Timeout (seconds)</label>
-                        <input type="number" name="timeout_seconds" class="form-control stl-input" min="5" max="300"
-                               value="{{ device.timeout_seconds if device else 30 }}">
-                    </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">Password <span class="text-muted">(optional)</span></label>
+                    <input type="password" name="auth_password" class="form-control" autocomplete="new-password"
+                           placeholder="{% if device %}Leave blank to keep the current value{% else %}Reserved for future device types{% endif %}">
                 </div>
-                <div class="mb-3 form-check">
-                    <input type="checkbox" name="verify_ssl" class="form-check-input" id="verifySsl"
-                           {% if device and device.verify_ssl %}checked{% endif %}>
-                    <label class="form-check-label label-color" for="verifySsl">Verify TLS certificate</label>
-                    <div class="form-text stl-help-text">Leave unchecked if the device uses a self-signed certificate.</div>
-                </div>
+            </div>
 
-                <hr class="my-4">
+            <hr class="my-4">
 
-                <h2 class="stl-section-title h5">Credentials</h2>
-                {% if device %}
-                <p class="stl-help-text">Credential fields are write-only and never displayed. Leave a field blank to keep its currently stored value.</p>
-                {% endif %}
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">API Key {% if not device %}<span class="text-danger">*</span>{% endif %}</label>
-                    <input type="password" name="api_key" class="form-control stl-input" autocomplete="new-password"
-                           placeholder="{% if device %}Leave blank to keep the current key{% else %}FortiGate REST API token{% endif %}">
+            <h2 class="hk-section-title h5">Collection Settings</h2>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold label-color">Snapshots to Keep</label>
+                    <input type="number" name="keep_snapshots" class="form-control" min="1" max="100"
+                           value="{{ device.keep_snapshots if device else 10 }}">
+                    <div class="form-text">Older completed snapshots beyond this count are pruned after each sync.</div>
                 </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">Username <span class="text-muted">(optional)</span></label>
-                        <input type="text" name="auth_username" class="form-control stl-input" autocomplete="off"
-                               placeholder="{% if device %}Leave blank to keep the current value{% else %}Reserved for future device types{% endif %}">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">Password <span class="text-muted">(optional)</span></label>
-                        <input type="password" name="auth_password" class="form-control stl-input" autocomplete="new-password"
-                               placeholder="{% if device %}Leave blank to keep the current value{% else %}Reserved for future device types{% endif %}">
+                <div class="col-md-6 mb-3 d-flex flex-column justify-content-center">
+                    <div class="form-check mt-4">
+                        <input type="checkbox" name="skip_monitor_routes" class="form-check-input" id="skipMonitorRoutes"
+                               {% if device and device.skip_monitor_routes %}checked{% endif %}>
+                        <label class="form-check-label label-color" for="skipMonitorRoutes">Skip runtime routing table (static routes only)</label>
                     </div>
                 </div>
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" name="is_active" class="form-check-input" id="isActive"
+                       {% if not device or device.is_active %}checked{% endif %}>
+                <label class="form-check-label label-color" for="isActive">Active</label>
+                <div class="form-text">Inactive devices are hidden from client policy evaluation and cannot be synced.</div>
+            </div>
 
-                <hr class="my-4">
-
-                <h2 class="stl-section-title h5">Collection Settings</h2>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-semibold label-color">Snapshots to Keep</label>
-                        <input type="number" name="keep_snapshots" class="form-control stl-input" min="1" max="100"
-                               value="{{ device.keep_snapshots if device else 10 }}">
-                        <div class="form-text stl-help-text">Older completed snapshots beyond this count are pruned after each sync.</div>
-                    </div>
-                    <div class="col-md-6 mb-3 d-flex flex-column justify-content-center">
-                        <div class="form-check mt-4">
-                            <input type="checkbox" name="skip_monitor_routes" class="form-check-input" id="skipMonitorRoutes"
-                                   {% if device and device.skip_monitor_routes %}checked{% endif %}>
-                            <label class="form-check-label label-color" for="skipMonitorRoutes">Skip runtime routing table (static routes only)</label>
-                        </div>
-                    </div>
-                </div>
-                <div class="mb-3 form-check">
-                    <input type="checkbox" name="is_active" class="form-check-input" id="isActive"
-                           {% if not device or device.is_active %}checked{% endif %}>
-                    <label class="form-check-label label-color" for="isActive">Active</label>
-                    <div class="form-text stl-help-text">Inactive devices are hidden from client policy evaluation and cannot be synced.</div>
-                </div>
-
-                <button type="submit" class="btn btn-primary stl-btn-primary">
-                    {% if device %}Update Device{% else %}Add Device{% endif %}
-                </button>
-                <a href="{{ url_for('admin.device_list') }}" class="btn btn-secondary">Cancel</a>
-            </form>
-        </div>
+            <button type="submit" class="btn btn-primary">
+                {% if device %}Update Device{% else %}Add Device{% endif %}
+            </button>
+            <a href="{{ url_for('admin.device_list') }}" class="btn btn-secondary">Cancel</a>
+        </form>
     </div>
-
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+
+{% endblock %}

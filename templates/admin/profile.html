@@ -1,75 +1,33 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Admin Profile - SecureTrack-Lite</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-</head>
-<body>
-<div class="container py-4 main-container">
+{% extends "admin/base.html" %}
 
-    <header class="stl-header mb-4">
-        <div class="stl-brand">
-            <div>
-                <h1 class="stl-title">Admin Profile</h1>
-                <p class="stl-subtitle">Change your password</p>
+{% block title %}Admin Profile - Hirkanet{% endblock %}
+{% block page_title %}Admin Profile{% endblock %}
+{% block page_subtitle %}Change your password{% endblock %}
+
+{% block content %}
+
+<div class="card hk-card">
+    <div class="card-header hk-card-header">
+        <h2 class="hk-section-title mb-0">Change Password</h2>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Current Password</label>
+                <input type="password" name="current_password" class="form-control" required>
             </div>
-        </div>
-        <div class="stl-user-nav">
-            <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
-            <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link">Devices</a>
-            <a href="{{ url_for('admin.user_list') }}" class="stl-nav-link">Users</a>
-            <a href="{{ url_for('admin.service_list') }}" class="stl-nav-link">Services</a>
-            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
-
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
-
-            </form>
-        </div>
-    </header>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    {% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">New Password</label>
+                <input type="password" name="new_password" class="form-control" required minlength="4">
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Confirm New Password</label>
+                <input type="password" name="confirm_password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Change Password</button>
+        </form>
     </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    <div class="card stl-card">
-        <div class="card-header stl-card-header">
-            <h2 class="stl-section-title mb-0">Change Password</h2>
-        </div>
-        <div class="card-body">
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Current Password</label>
-                    <input type="password" name="current_password" class="form-control stl-input" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">New Password</label>
-                    <input type="password" name="new_password" class="form-control stl-input" required minlength="4">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Confirm New Password</label>
-                    <input type="password" name="confirm_password" class="form-control stl-input" required>
-                </div>
-                <button type="submit" class="btn btn-primary stl-btn-primary">Change Password</button>
-            </form>
-        </div>
-    </div>
-
-    <footer class="stl-footer mt-4">
-        <span class="stl-footer-text">SecureTrack-Lite · Admin Panel</span>
-    </footer>
-
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+
+{% endblock %}
