@@ -1,71 +1,34 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{% if category %}Edit Category{% else %}Create Category{% endif %} - SecureTrack-Lite</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-</head>
-<body>
-<div class="container py-4 main-container">
+{% extends "admin/base.html" %}
 
-    <header class="stl-header mb-4">
-        <div class="stl-brand">
-            <div>
-                <h1 class="stl-title">{% if category %}Edit Category{% else %}Create Category{% endif %}</h1>
+{% block title %}{% if category %}Edit Category{% else %}Create Category{% endif %} - Hirkanet{% endblock %}
+{% block page_title %}{% if category %}Edit Category{% else %}Create Category{% endif %}{% endblock %}
+
+{% block content %}
+
+<div class="card hk-card">
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Category Name</label>
+                <input type="text" name="name" class="form-control"
+                       value="{{ category.name if category else '' }}" placeholder="e.g. Cyber Security" required>
+                <div class="form-text">
+                    The URL slug is generated automatically from this name.
+                    {% if category %}Current slug: <code>{{ category.slug }}</code>{% endif %}
+                </div>
             </div>
-        </div>
-        <div class="stl-user-nav">
-            <a href="{{ url_for('admin.dashboard') }}" class="stl-nav-link">Dashboard</a>
-            <a href="{{ url_for('admin.device_list') }}" class="stl-nav-link">Devices</a>
-            <a href="{{ url_for('admin.blog_category_list') }}" class="stl-nav-link">Blog Categories</a>
-            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
-
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <button type="submit" class="stl-nav-link stl-nav-logout">Sign Out</button>
-
-            </form>
-        </div>
-    </header>
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    {% for cat, message in messages %}
-    <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="mb-3">
+                <label class="form-label fw-semibold label-color">Description</label>
+                <textarea name="description" class="form-control" rows="3"
+                          placeholder="Shown as a short subtitle wherever this category is referenced.">{{ category.description if category else '' }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                {% if category %}Update Category{% else %}Create Category{% endif %}
+            </button>
+            <a href="{{ url_for('admin.blog_category_list') }}" class="btn btn-secondary">Cancel</a>
+        </form>
     </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    <div class="card stl-card">
-        <div class="card-body">
-            <form method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Category Name</label>
-                    <input type="text" name="name" class="form-control stl-input"
-                           value="{{ category.name if category else '' }}" placeholder="e.g. Cyber Security" required>
-                    <div class="form-text stl-help-text">
-                        The URL slug is generated automatically from this name.
-                        {% if category %}Current slug: <code>{{ category.slug }}</code>{% endif %}
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold label-color">Description</label>
-                    <textarea name="description" class="form-control stl-input" rows="3"
-                              placeholder="Shown as a short subtitle wherever this category is referenced.">{{ category.description if category else '' }}</textarea>
-                </div>
-                <button type="submit" class="btn btn-primary stl-btn-primary">
-                    {% if category %}Update Category{% else %}Create Category{% endif %}
-                </button>
-                <a href="{{ url_for('admin.blog_category_list') }}" class="btn btn-secondary">Cancel</a>
-            </form>
-        </div>
-    </div>
-
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+
+{% endblock %}

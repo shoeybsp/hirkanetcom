@@ -1,155 +1,313 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Sign In - SecureTrack-Lite</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - Hirkanet</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <style>
-        label.form-label,
-        label.form-label.fw-semibold {
-            color: #000000 !important;
-        }
-        .auth-container {
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
             min-height: 100vh;
+            background: var(--stl-bg);
+            font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .hk-login-layout {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
+            min-height: 100vh;
         }
-        .auth-card {
-            width: 100%;
-            max-width: 440px;
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            box-shadow: 0 24px 60px rgba(2, 8, 23, 0.38);
-        }
-        .auth-card .card-body {
-            padding: 2.4rem 2rem 2rem;
-        }
-        .auth-logo {
+
+        /* ---- Left branding panel ---- */
+        .hk-login-hero {
+            flex: 1;
+            background: var(--stl-surface);
+            border-right: 1px solid var(--stl-border);
             display: flex;
             flex-direction: column;
+            justify-content: center;
             align-items: center;
-            margin-bottom: 1.8rem;
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
         }
-        .auth-logo img {
-            width: auto;
-            height: 46px;
-            object-fit: contain;
-            margin-bottom: 0.9rem;
+
+        .hk-login-hero::before {
+            content: "";
+            position: absolute;
+            top: -30%;
+            left: -20%;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(6, 182, 212, 0.08) 0%, transparent 70%);
+            pointer-events: none;
         }
-        .auth-logo h1 {
+
+        .hk-login-hero::after {
+            content: "";
+            position: absolute;
+            bottom: -20%;
+            right: -15%;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(6, 182, 212, 0.05) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hk-login-hero-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .hk-login-hero-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            color: var(--stl-primary);
+            margin-bottom: 1.5rem;
+        }
+
+        .hk-login-hero h2 {
             color: #f8fbff;
-            font-size: 1.45rem;
+            font-size: 1.6rem;
             font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.75rem;
+        }
+
+        .hk-login-hero p {
+            color: var(--stl-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        .hk-login-features {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .hk-login-features li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--stl-text);
+            font-size: 0.88rem;
+            font-weight: 500;
+        }
+
+        .hk-login-features li svg {
+            flex-shrink: 0;
+            color: var(--stl-primary);
+        }
+
+        /* ---- Right form panel ---- */
+        .hk-login-form-panel {
+            width: 480px;
+            min-width: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem 2.5rem;
+        }
+
+        .hk-login-form-wrapper {
+            width: 100%;
+            max-width: 360px;
+        }
+
+        .hk-login-brand {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .hk-login-brand h1 {
+            color: #f8fbff;
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
             margin: 0;
         }
-        .auth-logo p {
+
+        .hk-login-brand p {
             color: var(--stl-muted);
-            font-size: 0.92rem;
-            margin: 0.3rem 0 0;
-        }
-        .auth-field {
-            margin-bottom: 1.1rem;
-        }
-        .auth-field label {
-            color: #000000 !important;
             font-size: 0.88rem;
+            margin: 0.35rem 0 0;
+        }
+
+        .hk-login-field {
+            margin-bottom: 1.25rem;
+        }
+
+        .hk-login-field label {
+            display: block;
+            color: var(--stl-text);
+            font-size: 0.85rem;
             font-weight: 600;
-            margin-bottom: 0.45rem;
+            margin-bottom: 0.4rem;
         }
-        .auth-field input {
+
+        .hk-login-field input[type="text"],
+        .hk-login-field input[type="password"] {
             width: 100%;
-            min-height: 50px;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            border-radius: 14px;
-            background-color: rgba(8, 15, 29, 0.95) !important;
-            color: #f8fbff !important;
+            min-height: 48px;
+            border: 1px solid var(--stl-border);
+            border-radius: 10px;
+            background: rgba(8, 15, 29, 0.95);
+            color: #f8fbff;
             font-size: 0.95rem;
-            padding: 0.8rem 1rem;
-            transition: border-color 140ms ease, box-shadow 140ms ease;
+            padding: 0 1rem;
+            transition: border-color 160ms ease, box-shadow 160ms ease;
         }
-        .auth-field input:-webkit-autofill,
-        .auth-field input:-webkit-autofill:hover,
-        .auth-field input:-webkit-autofill:focus {
+
+        .hk-login-field input:-webkit-autofill,
+        .hk-login-field input:-webkit-autofill:hover,
+        .hk-login-field input:-webkit-autofill:focus {
             -webkit-text-fill-color: #f8fbff;
             -webkit-box-shadow: 0 0 0 1000px rgba(8, 15, 29, 0.95) inset;
             transition: background-color 5000s ease-in-out 0s;
         }
-        .auth-field input:focus {
-            border-color: var(--stl-primary);
-            background-color: rgba(8, 15, 29, 1);
-            box-shadow: 0 0 0 0.2rem rgba(79, 140, 255, 0.22);
+
+        .hk-login-field input:focus {
             outline: none;
+            border-color: var(--stl-primary);
+            box-shadow: 0 0 0 0.2rem rgba(6, 182, 212, 0.2);
         }
-        .auth-field input::placeholder {
-            color: #8092ac;
+
+        .hk-login-field input::placeholder {
+            color: #64748b;
         }
-        .auth-error {
-            background: rgba(239, 94, 94, 0.12);
-            border: 1px solid rgba(239, 94, 94, 0.25);
-            border-radius: 12px;
-            color: #ffc2c2;
-            font-size: 0.88rem;
-            padding: 0.75rem 1rem;
-            margin-bottom: 1rem;
-        }
-        .auth-submit {
+
+        .hk-login-submit {
             width: 100%;
-            min-height: 50px;
+            min-height: 48px;
             border: none;
-            border-radius: 14px;
-            background: linear-gradient(135deg, #2d79ff 0%, #1d4ed8 100%);
-            box-shadow: 0 16px 36px rgba(37, 99, 235, 0.24);
+            border-radius: 10px;
+            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+            box-shadow: 0 12px 28px rgba(6, 182, 212, 0.25);
             color: #fff;
             font-weight: 700;
-            font-size: 1rem;
-            padding: 0.7rem 1.75rem;
+            font-size: 0.95rem;
             cursor: pointer;
             transition: transform 140ms ease, box-shadow 140ms ease;
         }
-        .auth-submit:hover {
+
+        .hk-login-submit:hover {
             transform: translateY(-1px);
-            box-shadow: 0 18px 40px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 14px 32px rgba(6, 182, 212, 0.35);
         }
-        .auth-footer {
-            text-align: center;
-            margin-top: 1.25rem;
-            color: var(--stl-muted);
-            font-size: 0.84rem;
+
+        .hk-login-submit:active {
+            transform: translateY(0);
         }
-        .auth-flash {
-	        background: rgba(79, 255, 202, 0);
-            border: 1px solid rgba(79, 140, 255, 0.24);
-            border-radius: 12px;
-            color: #0e3161;
-            font-size: 0.88rem;
-            padding: 0.75rem 1rem;
+
+        .hk-login-error {
+            background: rgba(239, 94, 94, 0.1);
+            border: 1px solid rgba(239, 94, 94, 0.25);
+            border-radius: 10px;
+            color: #fca5a5;
+            font-size: 0.85rem;
+            padding: 0.7rem 1rem;
             margin-bottom: 1rem;
-}
-        .auth-csrf-note {
-            color: #64748b;
-            font-size: 0.75rem;
+        }
+
+        .hk-login-flash {
+            background: rgba(6, 182, 212, 0.08);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 10px;
+            color: #a5f3fc;
+            font-size: 0.85rem;
+            padding: 0.7rem 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .hk-login-footer {
             text-align: center;
-            margin-top: 1rem;
+            margin-top: 1.5rem;
+            color: var(--stl-muted);
+            font-size: 0.8rem;
+        }
+
+        .hk-login-footer strong {
+            color: var(--stl-text);
+        }
+
+        .hk-login-error small {
+            color: #f87171;
+            font-size: 0.8rem;
+        }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 900px) {
+            .hk-login-hero {
+                display: none;
+            }
+            .hk-login-form-panel {
+                width: 100%;
+                min-width: 0;
+            }
         }
     </style>
 </head>
 <body>
-<div class="auth-container">
-    <div class="card stl-card auth-card">
-        <div class="card-body">
-            <div class="auth-logo">
-                <a href="{{ url_for('main.home') }}">
-                    <img src="{{ url_for('static', filename='img/hirkanet-icon.png') }}"
-                         alt="Hirkanet logo"
-                         onerror="this.style.display='none'">
-                </a>
-                <h1>SecureTrack-Lite</h1>
-                <p>Policy Evaluation Portal</p>
+<div class="hk-login-layout">
+
+    <!-- Left hero panel -->
+    <div class="hk-login-hero">
+        <div class="hk-login-hero-content">
+            <div class="hk-login-hero-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
+            <h2>Hirkanet</h2>
+            <p>Unified network policy evaluation and security posture management for FortiGate environments.</p>
+            <ul class="hk-login-features">
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Automated device configuration snapshots
+                </li>
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Real-time policy compliance evaluation
+                </li>
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Per-device client access control
+                </li>
+                <li>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Structured audit-ready reporting
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Right form panel -->
+    <div class="hk-login-form-panel">
+        <div class="hk-login-form-wrapper">
+
+            <div class="hk-login-brand">
+                <h1>Sign in to Hirkanet</h1>
+                <p>Enter your credentials to access the admin panel</p>
             </div>
 
             {% if rate_limited %}
-                <div class="auth-error" role="alert">
+                <div class="hk-login-error" role="alert">
                     Too many sign-in attempts. Please wait before trying again.
                 </div>
             {% endif %}
@@ -157,7 +315,7 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="{% if category == 'error' %}auth-error{% else %}auth-flash{% endif %}">
+                        <div class="{% if category == 'error' %}hk-login-error{% else %}hk-login-flash{% endif %}">
                             {{ message }}
                         </div>
                     {% endfor %}
@@ -167,34 +325,36 @@
             <form method="POST" action="{{ url_for('login') }}">
                 {{ form.hidden_tag() }}
 
-                <div class="auth-field">
+                <div class="hk-login-field">
                     {{ form.username.label }}
                     {{ form.username() }}
                     {% if form.username.errors %}
                         {% for error in form.username.errors %}
-                            <small style="color: #f87171; font-size: 0.8rem;">{{ error }}</small>
+                            <small>{{ error }}</small>
                         {% endfor %}
                     {% endif %}
                 </div>
 
-                <div class="auth-field">
+                <div class="hk-login-field">
                     {{ form.password.label }}
                     {{ form.password() }}
                     {% if form.password.errors %}
                         {% for error in form.password.errors %}
-                            <small style="color: #f87171; font-size: 0.8rem;">{{ error }}</small>
+                            <small>{{ error }}</small>
                         {% endfor %}
                     {% endif %}
                 </div>
 
-                {{ form.submit(class="auth-submit") }}
+                {{ form.submit(class="hk-login-submit") }}
             </form>
 
-            <div class="auth-footer">
-                <span>Default credentials: <strong>admin</strong> / <strong>admin</strong></span>
+            <div class="hk-login-footer">
+                Default credentials: <strong>admin</strong> / <strong>admin</strong>
             </div>
+
         </div>
     </div>
+
 </div>
 </body>
 </html>
