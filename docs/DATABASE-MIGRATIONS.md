@@ -99,13 +99,20 @@ Revision `20260731_0002` encodes ownership in the database:
 - Deleting a blog author preserves posts and sets `author_id` to `NULL`.
 - Deleting a blog category preserves posts and sets `category_id` to `NULL`.
 
-Apply it with:
+Revisions `20260802_0005` and `20260803_0006` add two more ownership rules:
 
-```bash
-docker compose run --rm migrate
-```
+- Deleting a user deletes that user's device assignments and API keys.
+- Deleting a device deletes its client assignments. Collected snapshot
+  files on disk under that device's `data_dir` are **not** removed by
+  this cascade or by the admin panel's device-delete action - only the
+  database rows.
 
-Back up PostgreSQL before applying migrations to production.
+**SQLite note:** SQLite does not enforce `ON DELETE CASCADE` by default.
+`models.py` registers a `PRAGMA foreign_keys=ON` connect-event listener so
+local/dev/test runs using the SQLite fallback actually get this same
+cascade behavior; PostgreSQL enforces it natively regardless. This was
+found and fixed after a device delete under SQLite left an orphaned
+`DeviceAssignment` row that would not have occurred against PostgreSQL.
 
 ## Revision 20260731_0003: integrity constraints and indexes
 
@@ -115,3 +122,40 @@ blog queries. Before altering the schema it checks existing rows. If invalid or
 duplicate data exists, the migration stops with a descriptive error and does not
 silently modify production records. Correct the reported rows, take a fresh
 backup, and rerun `flask --app api.app db upgrade`.
+
+## Revision 20260801_0004: login rate limiting
+
+Adds `login_rate_limits`, a database-backed counter table shared by every
+application worker so failed-login tracking survives restarts and works
+correctly across multiple Gunicorn processes (an in-memory counter would
+not). See `docs/LOGIN-RATE-LIMITING-CHANGES.md` for the rate-limiting
+design itself.
+
+## Revision 20260802_0005: device inventory
+
+Adds `devices` and `device_assignments`, replacing the single hardcoded
+FortiGate configuration with an admin-managed inventory of any number of
+devices, each independently collected and independently assigned to
+client users. Device credentials are stored encrypted (`secret_crypto.py`),
+never in plaintext.
+
+This migration only creates the tables; it does not move any data. The
+first time the application starts afterward, `models.py::_seed_defaults()`
+registers the pre-existing flat `data/` directory as a `Device` row named
+"Default FortiGate" so existing single-device installs keep working with
+zero snapshot files moved. This seeding step, not the migration itself,
+is what makes upgrading from a pre-multi-device install safe - the same
+role revision `20260731_0001` plays for pre-Alembic installs.
+
+## Revision 20260803_0006: API keys
+
+Adds `api_keys`, authenticating the additive FastAPI service (`api_v2/`,
+see the project README) against existing `User` rows rather than a
+separate identity concept. Only a SHA-256 hash of each key is ever
+stored; keys are issued via `flask --app api.app issue-api-key <username>`
+and shown once, never recoverable afterward.
+
+`api_v2` reads and writes this schema through its own plain SQLAlchemy
+models (`api_v2/models.py`), but never migrates it - Alembic, driven only
+from the Flask side documented in this file, remains the single source
+of schema truth for both services.
