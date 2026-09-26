@@ -453,7 +453,12 @@ def _seed_defaults():
                 "name": "Policy Evaluation",
                 "description": "Evaluate FortiGate firewall policies for new access requests",
                 "service_type": "policy_evaluation",
-            }
+            },
+            {
+                "name": "Policy Risk Assessment",
+                "description": "Score and rank firewall policies by security risk with remediation guidance",
+                "service_type": "policy_risk_assessment",
+            },
         ]
         for svc_data in default_services:
             if Service.query.filter_by(

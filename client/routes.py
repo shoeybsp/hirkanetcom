@@ -557,3 +557,108 @@ def policy_catalog_results():
         "device_id": device_id,
         "device_name": device.name,
     })
+
+
+# =============================================================================
+# Risk Assessment Service (score and rank policies by security risk)
+# =============================================================================
+
+
+@client_bp.route("/risk-assessment")
+@login_required
+@subscription_required("policy_risk_assessment")
+def risk_assessment():
+    """Risk assessment page — score and rank policies by security risk."""
+    from services.risk_assessment import RiskAssessmentService
+
+    devices = get_assigned_devices(current_user.id)
+    if not devices:
+        flash("No devices are assigned to your account.", "warning")
+        return redirect(url_for("client.dashboard"))
+
+    device_id = request.args.get("device_id", type=int)
+    selected_device = None
+    if device_id:
+        if not has_device_access(current_user.id, device_id):
+            flash("You do not have access to the selected device.", "error")
+            return redirect(url_for("client.risk_assessment"))
+        selected_device = next((d for d in devices if d.id == device_id), None)
+    else:
+        selected_device = devices[0] if devices else None
+
+    return render_template(
+        "client/risk_assessment.html",
+        devices=devices,
+        selected_device=selected_device,
+    )
+
+
+@client_bp.route("/risk-assessment/results", methods=["GET", "POST"])
+@login_required
+@subscription_required("policy_risk_assessment")
+def risk_assessment_results():
+    """Return filtered risk assessment results as JSON."""
+    from services.risk_assessment import RiskAssessmentService
+    from validation.risk_assessment import validate_risk_assessment_params, RiskAssessmentError
+
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+
+    if not device_id:
+        return jsonify({"error": "device_required", "message": "Please select a device."}), 400
+
+    if not has_device_access(current_user.id, device_id):
+        return jsonify({"error": "access_denied", "message": "You do not have access to this device."}), 403
+
+    device = next((d for d in devices if d.id == device_id), None)
+    if device is None:
+        return jsonify({"error": "device_not_found", "message": "Device not found."}), 404
+
+    try:
+        data_root = str(resolve_device_data_root(device))
+        svc = RiskAssessmentService(data_root)
+    except Exception as e:
+        logger.warning(
+            "Risk assessment service unavailable",
+            extra={"device_id": device_id, "error": str(e)},
+        )
+        return jsonify({
+            "error": "data_unavailable",
+            "message": f"No policy snapshot available for '{device.name}'. Ask an administrator to sync this device.",
+        }), 200
+
+    try:
+        validated = validate_risk_assessment_params(
+            risk_level=request.args.get("risk_level") or request.form.get("risk_level"),
+            dimension=request.args.get("dimension") or request.form.get("dimension"),
+            min_score=request.args.get("min_score") or request.form.get("min_score"),
+            limit=request.args.get("limit") or request.form.get("limit"),
+            offset=request.args.get("offset") or request.form.get("offset"),
+            sort_by=request.args.get("sort_by") or request.form.get("sort_by"),
+            sort_order=request.args.get("sort_order") or request.form.get("sort_order"),
+        )
+    except RiskAssessmentError as exc:
+        return jsonify({"error": "validation_failed", "details": exc.errors}), 400
+
+    result = svc.get_assessment(
+        risk_level=validated.get("risk_level"),
+        dimension=validated.get("dimension"),
+        min_score=validated.get("min_score"),
+        name=request.args.get("name") or request.form.get("name"),
+        limit=validated.get("limit", 100),
+        offset=validated.get("offset", 0),
+        sort_by=validated.get("sort_by", "risk_score"),
+        sort_order=validated.get("sort_order", "desc"),
+    )
+
+    return jsonify({
+        "data": result.data,
+        "total": result.total,
+        "limit": result.limit,
+        "offset": result.offset,
+        "has_more": result.has_more,
+        "filters_applied": result.filters_applied,
+        "summary": result.summary,
+        "device_id": device_id,
+        "device_name": device.name,
+    })
