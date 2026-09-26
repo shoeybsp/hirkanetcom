@@ -22,6 +22,7 @@ from client.access import (
     get_assigned_devices,
     has_active_service_subscription,
     subscription_required,
+    has_device_access,
 )
 from collectors.sync_service import resolve_device_data_root
 
@@ -429,3 +430,130 @@ def policy_evaluation_batch():
         has_header=has_header,
         device=selected_device,
     )
+
+
+# =============================================================================
+# Policy Catalog Service (browse and filter collected policies)
+# =============================================================================
+
+
+@client_bp.route("/policies")
+@login_required
+def policy_catalog():
+    """Policy catalog page - browse and filter collected policies.
+
+    Accessible to any authenticated client with at least one device assigned.
+    """
+    from services.policy_search import PolicySearchService
+
+    devices = get_assigned_devices(current_user.id)
+    if not devices:
+        flash("No devices are assigned to your account.", "warning")
+        return redirect(url_for("client.dashboard"))
+
+    # Validate device access if device_id is specified
+    device_id = request.args.get("device_id", type=int)
+    selected_device = None
+    if device_id:
+        if not has_device_access(current_user.id, device_id):
+            flash("You do not have access to the selected device.", "error")
+            return redirect(url_for("client.policy_catalog"))
+        selected_device = next((d for d in devices if d.id == device_id), None)
+    else:
+        selected_device = devices[0] if devices else None
+
+    # Load filter options (addresses/services) from snapshot for dropdowns
+    filter_options = {"addresses": [], "services": []}
+    if selected_device:
+        try:
+            data_root = str(resolve_device_data_root(selected_device))
+            svc = PolicySearchService(data_root)
+            filter_options = svc.get_filter_options()
+        except Exception:
+            logger.warning(
+                "Could not load filter options for catalog",
+                extra={"device_id": selected_device.id},
+            )
+
+    return render_template(
+        "client/policy_catalog.html",
+        devices=devices,
+        selected_device=selected_device,
+        filter_addresses=filter_options.get("addresses", []),
+        filter_services=filter_options.get("services", []),
+    )
+
+
+@client_bp.route("/policies/results", methods=["GET", "POST"])
+@login_required
+def policy_catalog_results():
+    """Return filtered policy results as JSON for the catalog page."""
+    from services.policy_search import PolicySearchService
+    from validation.policies import validate_policy_search_params, PolicySearchError
+
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+
+    if not device_id:
+        return jsonify({"error": "device_required", "message": "Please select a device."}), 400
+
+    if not has_device_access(current_user.id, device_id):
+        return jsonify({"error": "access_denied", "message": "You do not have access to this device."}), 403
+
+    device = next((d for d in devices if d.id == device_id), None)
+    if device is None:
+        return jsonify({"error": "device_not_found", "message": "Device not found."}), 404
+
+    try:
+        data_root = str(resolve_device_data_root(device))
+        svc = PolicySearchService(data_root)
+    except Exception as e:
+        logger.warning(
+            "Policy search service unavailable",
+            extra={"device_id": device_id, "error": str(e)},
+        )
+        return jsonify({
+            "error": "data_unavailable",
+            "message": f"No policy snapshot available for '{device.name}'. Ask an administrator to sync this device.",
+        }), 200
+
+    try:
+        validated = validate_policy_search_params(
+            action=request.args.get("action") or request.form.get("action"),
+            status=request.args.get("status") or request.form.get("status"),
+            limit=request.args.get("limit") or request.form.get("limit"),
+            offset=request.args.get("offset") or request.form.get("offset"),
+            sort_by=request.args.get("sort_by") or request.form.get("sort_by"),
+            sort_order=request.args.get("sort_order") or request.form.get("sort_order"),
+        )
+    except PolicySearchError as exc:
+        return jsonify({"error": "validation_failed", "details": exc.errors}), 400
+
+    result = svc.search(
+        name=request.args.get("name") or request.form.get("name"),
+        action=validated.get("action"),
+        status=validated.get("status"),
+        service=request.args.get("service") or request.form.get("service"),
+        srcaddr=request.args.get("srcaddr") or request.form.get("srcaddr"),
+        dstaddr=request.args.get("dstaddr") or request.form.get("dstaddr"),
+        srcintf=request.args.get("srcintf") or request.form.get("srcintf"),
+        dstintf=request.args.get("dstintf") or request.form.get("dstintf"),
+        logtraffic=request.args.get("logtraffic") or request.form.get("logtraffic"),
+        limit=validated.get("limit", 100),
+        offset=validated.get("offset", 0),
+        sort_by=validated.get("sort_by", "policyid"),
+        sort_order=validated.get("sort_order", "asc"),
+    )
+
+    return jsonify({
+        "data": result.data,
+        "pagination": {
+            "total": result.total,
+            "limit": result.limit,
+            "offset": result.offset,
+            "has_more": result.has_more,
+        },
+        "filters_applied": result.filters_applied,
+        "device_id": device_id,
+        "device_name": device.name,
+    })
