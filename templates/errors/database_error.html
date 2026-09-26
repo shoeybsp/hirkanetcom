@@ -1,0 +1,8 @@
+{% extends "errors/base.html" %}
+{% block title %}Database Error{% endblock %}
+{% block content %}
+<div class="error-code">!</div>
+<h1 class="error-title">Database Operation Failed</h1>
+<p class="error-message">{{ message }}</p>
+<a class="error-link" href="{{ url_for('login') }}">Go to Login</a>
+{% endblock %}

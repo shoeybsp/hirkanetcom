@@ -1,0 +1,8 @@
+{% extends "errors/base.html" %}
+{% block title %}Invalid Request{% endblock %}
+{% block content %}
+<div class="error-code">400</div>
+<h1 class="error-title">Invalid Request</h1>
+<p class="error-message">{{ message or "The form expired or was submitted from an invalid page. Please try again." }}</p>
+<a class="error-link" href="{{ request.referrer or url_for('login') }}">Return</a>
+{% endblock %}

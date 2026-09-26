@@ -96,8 +96,6 @@ Revision `20260731_0002` encodes ownership in the database:
 
 - Deleting a user deletes that user's subscriptions.
 - Deleting a service deletes subscriptions for that service.
-- Deleting a blog author preserves posts and sets `author_id` to `NULL`.
-- Deleting a blog category preserves posts and sets `category_id` to `NULL`.
 
 Revisions `20260802_0005` and `20260803_0006` add two more ownership rules:
 
@@ -116,9 +114,9 @@ found and fixed after a device delete under SQLite left an orphaned
 
 ## Revision 20260731_0003: integrity constraints and indexes
 
-This revision adds database-enforced role, status, service-type, subscription-date,
-and subscription-uniqueness rules, plus composite indexes for common access and
-blog queries. Before altering the schema it checks existing rows. If invalid or
+This revision adds database-enforced role, service-type, subscription-date,
+and subscription-uniqueness rules, plus composite indexes for common access
+paths. Before altering the schema it checks existing rows. If invalid or
 duplicate data exists, the migration stops with a descriptive error and does not
 silently modify production records. Correct the reported rows, take a fresh
 backup, and rerun `flask --app api.app db upgrade`.

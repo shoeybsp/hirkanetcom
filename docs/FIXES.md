@@ -60,9 +60,9 @@ Files changed:
 
 - Added a top-level `validation/` package for shared structured validation errors and reusable validators.
 - Moved evaluator validation to `validation/evaluation.py`; retained `engine/input_validation.py` as a compatibility import.
-- Centralized user, password, role, service, category, blog post, subscription-ID, CSV-upload, and cover-image validation.
+- Centralized user, password, role, service, subscription-ID, and CSV-upload validation.
 - Replaced duplicated checks in admin and client routes with typed validated results.
-- Added strict identifier validation for subscriptions and blog categories.
+- Added strict identifier validation for subscriptions.
 - Added upload content-signature checks so image extensions alone are not trusted.
 - Added regression tests for the centralized validation layer.
 
@@ -113,7 +113,7 @@ Files changed:
 - Drops all Linux capabilities and prevents privilege escalation with `no-new-privileges`.
 - Enables Compose's minimal init process for correct PID 1 signal and child-process handling.
 - Limits the application to 256 processes and provides a small hardened `/tmp` tmpfs.
-- Keeps only runtime data, general uploads, and blog-image uploads writable through explicit mounts.
+- Keeps only runtime data and general uploads writable through explicit mounts.
 - Adds a 30-second graceful shutdown window for Gunicorn.
 - Adds regression tests that prevent these hardening controls from being removed silently.
 
@@ -193,9 +193,8 @@ Added explicit CPU, memory, memory-reservation, and PID limits to every Compose 
 ## Fix 22 — Database-enforced foreign-key delete actions
 
 - `subscriptions.user_id` and `subscriptions.service_id` now use `ON DELETE CASCADE`.
-- `blog_posts.author_id` and `blog_posts.category_id` now use `ON DELETE SET NULL`.
 - SQLAlchemy relationships use `passive_deletes=True`; owned subscriptions also use `delete-orphan` cascade.
-- Removed manual subscription/category cleanup from admin routes.
+- Removed manual subscription cleanup from admin routes.
 - Added Alembic revision `20260731_0002` to adopt the constraints on existing databases.
 
 ## Fix #23 — PostgreSQL backup and tested restore procedures
@@ -218,9 +217,9 @@ Added explicit CPU, memory, memory-reservation, and PID limits to every Compose 
 
 ## Fix 25 — Database indexes and check constraints
 
-- Added database checks for valid user roles, nonblank service types, valid blog status, and valid subscription date ranges.
+- Added database checks for valid user roles, nonblank service types, and valid subscription date ranges.
 - Added a unique subscription constraint so a user cannot have duplicate rows for the same service.
-- Added composite indexes matching active subscription, active service-type, and published blog queries.
+- Added composite indexes matching active subscription and active service-type queries.
 - Added Alembic revision `20260731_0003`, which fails closed when existing production rows violate a new invariant instead of rewriting data silently.
 - Added regression coverage for model and migration definitions.
 

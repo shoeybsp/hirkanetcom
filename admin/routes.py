@@ -1,7 +1,5 @@
-import os
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from flask import (
     Blueprint,
@@ -10,19 +8,15 @@ from flask import (
     url_for,
     flash,
     request,
-    current_app,
 )
-from werkzeug.utils import secure_filename
 from flask_login import login_required, current_user
-from models import db, User, Service, Subscription, BlogCategory, BlogPost, Device, DeviceAssignment, slugify
+from models import db, User, Service, Subscription, Device, DeviceAssignment
 from database_transactions import commit_transaction
 from security import hash_password, verify_password
 from secret_crypto import encrypt_secret
 from collectors.sync_service import DeviceSyncError, run_device_sync
 from validation import ValidationError
 from validation.admin import (
-    validate_blog_post,
-    validate_category,
     validate_device,
     validate_device_assignment_user_ids,
     validate_password_change,
@@ -30,7 +24,6 @@ from validation.admin import (
     validate_subscription_ids,
     validate_user,
 )
-from validation.uploads import validate_cover_image
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 logger = logging.getLogger(__name__)
@@ -63,16 +56,12 @@ def dashboard():
     user_count = User.query.count()
     service_count = Service.query.count()
     subscription_count = Subscription.query.count()
-    blog_post_count = BlogPost.query.count()
-    blog_category_count = BlogCategory.query.count()
     device_count = Device.query.count()
     return render_template(
         "admin/dashboard.html",
         user_count=user_count,
         service_count=service_count,
         subscription_count=subscription_count,
-        blog_post_count=blog_post_count,
-        blog_category_count=blog_category_count,
         device_count=device_count,
     )
 
@@ -567,254 +556,6 @@ def device_assignments(device_id):
         clients=clients,
         assigned_ids=assigned_ids,
     )
-
-
-# =============================================================================
-# Blog Categories
-# =============================================================================
-
-
-@admin_bp.route("/blog/categories")
-@admin_required
-def blog_category_list():
-    """List all blog categories."""
-    categories = BlogCategory.query.order_by(BlogCategory.name).all()
-    return render_template("admin/blog_categories.html", categories=categories)
-
-
-@admin_bp.route("/blog/categories/create", methods=["GET", "POST"])
-@admin_required
-def blog_category_create():
-    """Create a new blog category."""
-    if request.method == "POST":
-        try:
-            values = validate_category(request.form)
-        except ValidationError as exc:
-            flash(exc.as_text(), "error")
-            return render_template("admin/blog_category_form.html", category=None)
-        name, description = values.name, values.description
-
-        slug = slugify(name)
-        if BlogCategory.query.filter_by(slug=slug).first():
-            flash(f"A category named '{name}' already exists.", "error")
-            return render_template("admin/blog_category_form.html", category=None)
-
-        cat = BlogCategory(name=name, slug=slug, description=description)
-        db.session.add(cat)
-        commit_transaction("admin database change")
-
-        flash(f"Category '{name}' created.", "success")
-        return redirect(url_for("admin.blog_category_list"))
-
-    return render_template("admin/blog_category_form.html", category=None)
-
-
-@admin_bp.route("/blog/categories/<int:category_id>/edit", methods=["GET", "POST"])
-@admin_required
-def blog_category_edit(category_id):
-    """Edit a blog category."""
-    cat = BlogCategory.query.get_or_404(category_id)
-
-    if request.method == "POST":
-        try:
-            values = validate_category(request.form)
-        except ValidationError as exc:
-            flash(exc.as_text(), "error")
-            return render_template("admin/blog_category_form.html", category=cat)
-        name, description = values.name, values.description
-
-        slug = slugify(name)
-        existing = BlogCategory.query.filter(
-            BlogCategory.slug == slug, BlogCategory.id != category_id
-        ).first()
-        if existing:
-            flash(f"A category named '{name}' already exists.", "error")
-            return render_template("admin/blog_category_form.html", category=cat)
-
-        cat.name = name
-        cat.slug = slug
-        cat.description = description
-        commit_transaction("admin database change")
-
-        flash(f"Category '{name}' updated.", "success")
-        return redirect(url_for("admin.blog_category_list"))
-
-    return render_template("admin/blog_category_form.html", category=cat)
-
-
-@admin_bp.route("/blog/categories/<int:category_id>/delete", methods=["POST"])
-@admin_required
-def blog_category_delete(category_id):
-    """Delete a blog category. Posts in it become uncategorized, not deleted."""
-    cat = BlogCategory.query.get_or_404(category_id)
-
-    db.session.delete(cat)
-    commit_transaction("admin database change")
-
-    flash(f"Category '{cat.name}' deleted. Its posts are now uncategorized.", "success")
-    return redirect(url_for("admin.blog_category_list"))
-
-
-# =============================================================================
-# Blog Posts
-# =============================================================================
-
-
-def _save_cover_image(file_storage):
-    """Validate and save an uploaded cover image."""
-    ext = validate_cover_image(file_storage)
-    if ext is None:
-        return None
-    filename = secure_filename(f"{uuid.uuid4().hex}.{ext}")
-    upload_dir = os.path.join(current_app.static_folder, "uploads", "blog")
-    os.makedirs(upload_dir, exist_ok=True)
-    file_storage.save(os.path.join(upload_dir, filename))
-    return url_for("static", filename=f"uploads/blog/{filename}")
-
-
-@admin_bp.route("/blog/posts")
-@admin_required
-def blog_post_list():
-    """List all blog posts, optionally filtered by status."""
-    status_filter = request.args.get("status", "").strip()
-    query = BlogPost.query
-    if status_filter in ("draft", "published"):
-        query = query.filter_by(status=status_filter)
-    posts = query.order_by(BlogPost.updated_at.desc()).all()
-    return render_template(
-        "admin/blog_posts.html", posts=posts, status_filter=status_filter
-    )
-
-
-@admin_bp.route("/blog/posts/create", methods=["GET", "POST"])
-@admin_required
-def blog_post_create():
-    """Create a new blog post."""
-    categories = BlogCategory.query.order_by(BlogCategory.name).all()
-
-    if request.method == "POST":
-        try:
-            values = validate_blog_post(
-                request.form, allowed_category_ids={category.id for category in categories}
-            )
-            cover_image = _save_cover_image(request.files.get("cover_image"))
-        except ValidationError as exc:
-            flash(exc.as_text(), "error")
-            return render_template("admin/blog_post_form.html", post=None, categories=categories)
-        title, excerpt, content = values.title, values.excerpt, values.content
-        status, category_id = values.status, values.category_id
-
-        slug = slugify(title)
-        base_slug = slug
-        suffix = 2
-        while BlogPost.query.filter_by(slug=slug).first():
-            slug = f"{base_slug}-{suffix}"
-            suffix += 1
-
-        post = BlogPost(
-            title=title,
-            slug=slug,
-            excerpt=excerpt,
-            content=content,
-            status=status,
-            category_id=category_id,
-            author_id=current_user.id,
-            cover_image=cover_image or "",
-            published_at=datetime.now(timezone.utc) if status == "published" else None,
-        )
-        db.session.add(post)
-        commit_transaction("admin database change")
-
-        flash(f"Post '{title}' created.", "success")
-        return redirect(url_for("admin.blog_post_list"))
-
-    return render_template("admin/blog_post_form.html", post=None, categories=categories)
-
-
-@admin_bp.route("/blog/posts/<int:post_id>/edit", methods=["GET", "POST"])
-@admin_required
-def blog_post_edit(post_id):
-    """Edit a blog post."""
-    post = BlogPost.query.get_or_404(post_id)
-    categories = BlogCategory.query.order_by(BlogCategory.name).all()
-
-    if request.method == "POST":
-        try:
-            values = validate_blog_post(
-                request.form, allowed_category_ids={category.id for category in categories}
-            )
-            new_cover = _save_cover_image(request.files.get("cover_image"))
-        except ValidationError as exc:
-            flash(exc.as_text(), "error")
-            return render_template("admin/blog_post_form.html", post=post, categories=categories)
-        title, excerpt, content = values.title, values.excerpt, values.content
-        status, category_id, remove_cover = values.status, values.category_id, values.remove_cover
-
-        # Re-slug only if the title actually changed, to keep existing links stable.
-        if title != post.title:
-            slug = slugify(title)
-            base_slug = slug
-            suffix = 2
-            while BlogPost.query.filter(BlogPost.slug == slug, BlogPost.id != post.id).first():
-                slug = f"{base_slug}-{suffix}"
-                suffix += 1
-            post.slug = slug
-
-        if new_cover:
-            post.cover_image = new_cover
-        elif remove_cover:
-            post.cover_image = ""
-
-        was_published = post.status == "published"
-        post.title = title
-        post.excerpt = excerpt
-        post.content = content
-        post.status = status
-        post.category_id = category_id
-
-        if status == "published" and not was_published:
-            post.published_at = datetime.now(timezone.utc)
-        elif status == "draft":
-            post.published_at = None
-
-        commit_transaction("admin database change")
-
-        flash(f"Post '{title}' updated.", "success")
-        return redirect(url_for("admin.blog_post_list"))
-
-    return render_template("admin/blog_post_form.html", post=post, categories=categories)
-
-
-@admin_bp.route("/blog/posts/<int:post_id>/delete", methods=["POST"])
-@admin_required
-def blog_post_delete(post_id):
-    """Delete a blog post."""
-    post = BlogPost.query.get_or_404(post_id)
-    title = post.title
-    db.session.delete(post)
-    commit_transaction("admin database change")
-
-    flash(f"Post '{title}' deleted.", "success")
-    return redirect(url_for("admin.blog_post_list"))
-
-
-@admin_bp.route("/blog/posts/<int:post_id>/toggle-status", methods=["POST"])
-@admin_required
-def blog_post_toggle_status(post_id):
-    """Quickly publish a draft, or unpublish a live post."""
-    post = BlogPost.query.get_or_404(post_id)
-
-    if post.status == "published":
-        post.status = "draft"
-        post.published_at = None
-        flash(f"'{post.title}' moved back to draft.", "success")
-    else:
-        post.status = "published"
-        post.published_at = datetime.now(timezone.utc)
-        flash(f"'{post.title}' published.", "success")
-
-    commit_transaction("admin database change")
-    return redirect(url_for("admin.blog_post_list"))
 
 
 # =============================================================================

@@ -7,7 +7,6 @@ def test_models_define_database_delete_actions():
     models = (ROOT / "models.py").read_text(encoding="utf-8")
     assert 'ForeignKey("users.id", ondelete="CASCADE")' in models
     assert 'ForeignKey("services.id", ondelete="CASCADE")' in models
-    assert 'ForeignKey("blog_categories.id", ondelete="SET NULL")' in models
     assert 'ForeignKey("users.id", ondelete="SET NULL")' in models
 
 
@@ -30,4 +29,3 @@ def test_routes_rely_on_database_constraints_not_manual_cleanup():
     routes = (ROOT / "admin" / "routes.py").read_text(encoding="utf-8")
     assert "Subscription.query.filter_by(user_id=user.id).delete()" not in routes
     assert "Subscription.query.filter_by(service_id=svc.id).delete()" not in routes
-    assert 'BlogPost.query.filter_by(category_id=cat.id).update({"category_id": None})' not in routes

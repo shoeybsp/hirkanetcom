@@ -26,7 +26,7 @@ The monitor checks:
 - FortiGate snapshot storage and snapshot count
 - Stale FortiGate staging directories
 - Validity of the active FortiGate snapshot pointer
-- Blog and generic upload storage
+- Generic upload storage
 
 Exit codes:
 
@@ -73,7 +73,7 @@ The active FortiGate snapshot is always protected.
 
 ## Upload retention
 
-Uploaded blog media is monitored but **never deleted automatically**. A file may still be referenced by a blog post, cached page, external link, or backup. Media cleanup must be application-aware and reviewed before deletion.
+Uploaded media is monitored but **never deleted automatically**. Media cleanup must be application-aware and reviewed before deletion.
 
 ## Scheduling
 

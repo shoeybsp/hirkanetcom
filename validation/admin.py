@@ -8,7 +8,6 @@ from .common import (
     bounded_int,
     choice,
     host_address,
-    optional_int,
     password,
     service_type,
     text,
@@ -129,58 +128,6 @@ def validate_device(data: Mapping) -> DeviceInput:
     values["skip_monitor_routes"] = boolean_checkbox(data, "skip_monitor_routes")
     values["is_active"] = boolean_checkbox(data, "is_active")
     return DeviceInput(**values)
-
-
-@dataclass(frozen=True)
-class CategoryInput:
-    name: str
-    description: str
-
-
-def validate_category(data: Mapping) -> CategoryInput:
-    errors: dict[str, list[str]] = {}
-    try:
-        name = text(data, "name", required=True, max_length=120)
-    except ValidationError as exc:
-        errors.update(exc.errors); name = ""
-    try:
-        description = text(data, "description", max_length=5000)
-    except ValidationError as exc:
-        errors.update(exc.errors); description = ""
-    if errors:
-        raise ValidationError(errors)
-    return CategoryInput(name, description)
-
-
-@dataclass(frozen=True)
-class BlogPostInput:
-    title: str
-    excerpt: str
-    content: str
-    status: str
-    category_id: int | None
-    remove_cover: bool
-
-
-def validate_blog_post(data: Mapping, *, allowed_category_ids: set[int]) -> BlogPostInput:
-    errors: dict[str, list[str]] = {}
-    values = {}
-    specs = (
-        ("title", lambda: text(data, "title", required=True, max_length=200)),
-        ("excerpt", lambda: text(data, "excerpt", max_length=400)),
-        ("content", lambda: text(data, "content", required=True, max_length=200000)),
-        ("status", lambda: choice(data, "status", {"draft", "published"}, default="draft")),
-        ("category_id", lambda: optional_int(data, "category_id", allowed_ids=allowed_category_ids)),
-    )
-    for field, fn in specs:
-        try:
-            values[field] = fn()
-        except ValidationError as exc:
-            errors.update(exc.errors)
-    if errors:
-        raise ValidationError(errors)
-    values["remove_cover"] = boolean_checkbox(data, "remove_cover")
-    return BlogPostInput(**values)
 
 
 def validate_subscription_ids(raw_ids: Sequence[str], *, allowed_ids: set[int]) -> set[int]:

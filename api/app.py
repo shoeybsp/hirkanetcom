@@ -89,7 +89,7 @@ def handle_database_transaction_error(error):
         return jsonify({"error": error.public_message}), error.status_code
     return (
         render_template(
-            "main/database_error.html",
+            "errors/database_error.html",
             message=error.public_message,
         ),
         error.status_code,
@@ -113,7 +113,9 @@ def nl2p(text):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("main.home"))
+        if current_user.role == "admin":
+            return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("client.dashboard"))
 
     form = LoginForm()
     if form.validate_on_submit():
@@ -157,7 +159,9 @@ def login():
             next_page = request.args.get("next")
             if next_page and next_page.startswith("/") and not next_page.startswith("//"):
                 return redirect(next_page)
-            return redirect(url_for("main.home"))
+            if user.role == "admin":
+                return redirect(url_for("admin.dashboard"))
+            return redirect(url_for("client.dashboard"))
 
         failure_decision = record_login_failure(username, source_ip)
         logger.warning(
@@ -210,10 +214,10 @@ def handle_csrf_error(error):
     )
     if request.accept_mimetypes.best == "application/json":
         return jsonify({"error": "csrf_validation_failed", "message": error.description}), 400
-    return render_template("main/400.html", message="The form expired or was submitted from an invalid page. Please try again."), 400
+    return render_template("errors/400.html", message="The form expired or was submitted from an invalid page. Please try again."), 400
 
 @app.errorhandler(404)
-def not_found(error): return render_template("main/404.html"),404
+def not_found(error): return render_template("errors/404.html"),404
 @app.errorhandler(Exception)
 def unhandled(error):
     if isinstance(error,HTTPException): return error

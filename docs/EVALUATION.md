@@ -1,6 +1,6 @@
 # Hirkanet — Project Evaluation (2026-08-10)
 
-A **FortiGate firewall policy evaluation web app**: Flask + SQLAlchemy/Postgres + Gunicorn behind a reverse proxy, with a REST collector that pulls firewall policies/addresses/routes into versioned JSON snapshots, a heuristic candidate-ranking engine, a subscription-based client portal, admin CMS (users/services/blog), and a full ELK observability stack.
+A **FortiGate firewall policy evaluation web app**: Flask + SQLAlchemy/Postgres + Gunicorn behind a reverse proxy, with a REST collector that pulls firewall policies/addresses/routes into versioned JSON snapshots, a heuristic candidate-ranking engine, a subscription-based client portal, admin panel (users/services/devices), and a full ELK observability stack.
 
 ## Overall assessment
 

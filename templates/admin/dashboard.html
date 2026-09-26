@@ -7,7 +7,7 @@
 {% block content %}
 
 <div class="row g-4 mb-4">
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="hk-stat-card">
             <div class="hk-stat-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -16,7 +16,7 @@
             <p class="hk-stat-label">Total Users</p>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="hk-stat-card">
             <div class="hk-stat-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -25,22 +25,13 @@
             <p class="hk-stat-label">Services</p>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="hk-stat-card">
             <div class="hk-stat-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </div>
             <div class="hk-stat-value">{{ device_count }}</div>
             <p class="hk-stat-label">Devices</p>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="hk-stat-card">
-            <div class="hk-stat-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </div>
-            <div class="hk-stat-value">{{ blog_post_count }}</div>
-            <p class="hk-stat-label">Blog Posts</p>
         </div>
     </div>
 </div>
@@ -81,32 +72,6 @@
             <p class="hk-mgmt-card-desc">Configure available services. Add new services or modify existing ones for the platform.</p>
             <span class="hk-mgmt-card-arrow">
                 Manage Services
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            </span>
-        </a>
-    </div>
-    <div class="col-md-6">
-        <a href="{{ url_for('admin.blog_post_list') }}" class="hk-mgmt-card">
-            <div class="hk-mgmt-card-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </div>
-            <h2 class="hk-mgmt-card-title">Blog Posts</h2>
-            <p class="hk-mgmt-card-desc">Write, edit, and publish posts on the public Hirkanet blog. {{ blog_post_count }} post{{ 's' if blog_post_count != 1 else '' }} total.</p>
-            <span class="hk-mgmt-card-arrow">
-                Manage Blog Posts
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            </span>
-        </a>
-    </div>
-    <div class="col-md-6">
-        <a href="{{ url_for('admin.blog_category_list') }}" class="hk-mgmt-card">
-            <div class="hk-mgmt-card-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3L8 21"/><path d="M16 3l-2 18"/></svg>
-            </div>
-            <h2 class="hk-mgmt-card-title">Blog Categories</h2>
-            <p class="hk-mgmt-card-desc">Organize posts into categories visitors can filter by. {{ blog_category_count }} categor{{ 'y' if blog_category_count == 1 else 'ies' }} total.</p>
-            <span class="hk-mgmt-card-arrow">
-                Manage Categories
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </span>
         </a>

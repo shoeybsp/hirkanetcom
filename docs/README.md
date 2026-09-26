@@ -17,7 +17,7 @@ The application supports multiple registered FortiGate devices, each with its ow
 - **Multi-device inventory** — admins register any number of FortiGate devices, each with its own API host, credentials (encrypted at rest, never displayed again after entry), VDOM, and collection settings
 - **Per-device sync** — a "Sync Now" button runs the collector for a single device on demand, in addition to (or instead of) a scheduled cron job
 - **Device assignment** — admins grant individual client users access to specific devices; a client only ever sees and evaluates against devices they've been assigned, enforced at every entry point (page load, single evaluation, batch evaluation)
-- **Admin panel** — user management, service subscriptions, device inventory, and a blog (categories + posts) with rich-text handling
+- **Admin panel** — user management, service subscriptions, and device inventory
 - **Session-based auth** with CSRF protection, database-backed login rate limiting, and audit-logged admin actions
 - **Atomic, checksum-verified snapshots** — each collection run is immutable and versioned; the evaluator never reads a snapshot that's still being written
 - **Structured JSON logging**, with an optional Elastic (Elasticsearch/Logstash/Kibana/Filebeat) stack for centralized observability
@@ -55,9 +55,9 @@ Full details, verified against the running codebase rather than written from mem
 ```
 hirkanet/
 ├── api/              Flask app factory, login/CSRF/error handling, CLI commands
-├── admin/            Admin panel routes (users, services, devices, blog)
+├── admin/            Admin panel routes (users, services, devices)
 ├── client/           Client-facing routes (dashboard, policy evaluation, risk assessment) + access control
-├── main/             Public routes (home, blog)
+├── main/             Root URL redirect, context processor
 ├── auth/             Login forms, rate limiting
 ├── engine/           Evaluation engine, risk assessor, snapshot store, CIDR/interface logic
 ├── collectors/       FortiGate REST collector + per-device sync service
@@ -68,7 +68,7 @@ hirkanet/
 ├── database_transactions.py   Transaction/error-handling helpers
 ├── secret_crypto.py / secret_utils.py / security.py   Secrets & credential handling
 ├── migrations/        Alembic migration history
-├── templates/          Jinja2 templates (admin, client, auth, main, blog)
+├── templates/          Jinja2 templates (admin, client, auth, errors)
 ├── static/             CSS/JS/images
 ├── scripts/            Storage monitoring/retention, Postgres backup/restore
 ├── elk/                Elastic stack config (certs, Logstash pipeline)
@@ -95,8 +95,8 @@ chmod 600 .env
 The application container runs as a fixed non-root UID (`10001`). Create and prepare the host-mounted directories before first start — `data/` is a Docker-managed named volume and needs no host setup, but `uploads/` and `static/uploads/` are bind mounts:
 
 ```bash
-mkdir -p uploads static/uploads/blog backups/postgres
-sudo chown -R 10001:10001 uploads static/uploads
+mkdir -p uploads backups/postgres
+sudo chown -R 10001:10001 uploads
 ```
 
 ```bash

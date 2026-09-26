@@ -27,7 +27,7 @@ noted, against a running instance - not carried over from prior notes.
   `TRUSTED_HOSTS`, `MAX_CONTENT_LENGTH`, proxy header trust, and registers
   blueprints.
 - **Blueprints:**
-  - `main/routes.py` - public routes (home, blog).
+  - `main/routes.py` - root URL redirect and context processor.
   - `auth/` - login forms (`forms.py`) and database-backed login rate
     limiting (`rate_limit.py`). `auth/user_store.py` is dead code left over
     from a pre-SQLAlchemy user store; it is not imported anywhere and
@@ -35,7 +35,7 @@ noted, against a running instance - not carried over from prior notes.
   - `client/` - the client-facing dashboard, Policy Evaluation service, and
     Policy Catalog service (`routes.py`), plus authorization helpers
     (`access.py`).
-  - `admin/` - the admin panel: user, service, blog, and device management
+  - `admin/` - the admin panel: user, service, and device management
     (`routes.py`).
 - **Gunicorn:** Production WSGI server via `gunicorn.conf.py`. No explicit
   worker `timeout` is set, so it uses Gunicorn's default (30s) - relevant

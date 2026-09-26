@@ -10,8 +10,7 @@ PostgreSQL stores:
 - Roles
 - Hirkanet services
 - User-service subscriptions
-- Blog categories
-- Blog posts and metadata
+- Device inventory and assignments
 - Alembic migration state
 
 FortiGate policy data is not stored in the relational schema. It is stored as immutable, versioned snapshots inside the `hirkanet-app_hirkanet_data` named Docker volume, with an atomic active pointer. Uploaded media is also external to PostgreSQL.
@@ -212,27 +211,22 @@ The database enforces key invariants rather than relying only on route validatio
 
 - Deleting a user cascades to that user's subscriptions.
 - Deleting a service cascades to subscriptions for that service.
-- Deleting a blog author preserves blog posts and sets `author_id` to `NULL`.
-- Deleting a blog category preserves blog posts and sets `category_id` to `NULL`.
 
 ### Check and uniqueness constraints
 
 - User role must be `admin` or `client`.
-- Blog status must be `draft` or `published`.
 - Service type cannot be blank.
 - Subscription end time must be later than start time when present.
 - A user may have only one subscription row for a given service.
 
 ### Query indexes
 
-The schema includes indexes for common service, subscription, and blog access paths, including:
+The schema includes indexes for common service and subscription access paths, including:
 
 ```text
 ix_services_type_active
 ix_subscriptions_user_active
 ix_subscriptions_service_active
-ix_blog_posts_status_published_at
-ix_blog_posts_category_status
 ```
 
 Constraints are the final integrity authority. Route validators exist to provide friendly errors before a database constraint is reached.
@@ -407,7 +401,7 @@ Production replacement procedure:
 5. Restore deliberately.
 6. Run migrations.
 7. Start the app.
-8. Verify `/readyz`, login, subscriptions, blog records, and representative administration actions.
+8. Verify `/readyz`, login, subscriptions, and representative administration actions.
 
 Read `POSTGRES-BACKUP-RESTORE.md` before performing recovery.
 
@@ -556,7 +550,7 @@ python3 -m flask --app api.app seed-defaults
 If the application reports:
 
 ```text
-sqlite3.OperationalError: no such table: blog_posts
+sqlite3.OperationalError: no such table: <table_name>
 ```
 
 then the local schema has not been migrated.

@@ -184,7 +184,7 @@ a Docker-managed named volume, `hirkanet_data`, not a host directory - see
 below):
 
 ```bash
-mkdir -p uploads static/uploads/blog backups/postgres
+mkdir -p uploads backups/postgres
 ```
 
 The application container runs as a non-root user with a fixed UID/GID of
@@ -527,7 +527,7 @@ docker compose config
 ### Missing database table
 
 ```text
-no such table: blog_posts
+no such table: <table_name>
 ```
 
 The schema has not been migrated. For local development:

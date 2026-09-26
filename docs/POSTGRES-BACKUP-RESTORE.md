@@ -1,6 +1,6 @@
 # PostgreSQL Backup and Restore
 
-Hirkanet stores application identities, services, subscriptions, blog content,
+Hirkanet stores application identities, services, subscriptions, device inventory,
 and Alembic migration state in the named Docker volume `postgres_data`.
 A Docker volume is persistent storage, but it is not a backup.
 
@@ -98,7 +98,7 @@ Required procedure:
 docker compose up -d migrate app
 ```
 
-6. Verify `/readyz`, login, subscriptions, and representative blog records.
+6. Verify `/readyz`, login, subscriptions, and representative administration actions.
 
 ## Off-host storage
 

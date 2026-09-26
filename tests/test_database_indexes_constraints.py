@@ -10,7 +10,6 @@ def test_models_define_database_check_constraints():
         "ck_users_role",
         "ck_services_service_type_not_blank",
         "ck_subscriptions_valid_date_range",
-        "ck_blog_posts_status",
         "uq_subscriptions_user_service",
     ]:
         assert name in models
@@ -22,8 +21,6 @@ def test_models_define_query_indexes():
         "ix_services_type_active",
         "ix_subscriptions_user_active",
         "ix_subscriptions_service_active",
-        "ix_blog_posts_status_published_at",
-        "ix_blog_posts_category_status",
     ]:
         assert name in models
 
