@@ -257,43 +257,6 @@ class DeviceAssignment(db.Model):
         )
 
 
-class ApiKey(db.Model):
-    """A programmatic credential for the FastAPI service, tied to an
-    existing User rather than a separate identity concept, so authorization
-    (e.g. has_device_access) has exactly one source of truth regardless of
-    whether the caller is the web UI or the API.
-
-    Only key_hash (SHA-256 of the raw key) is ever stored - the raw key is
-    shown once at issuance time and cannot be recovered. SHA-256 rather
-    than the scrypt-based hashing in security.py is deliberate: API keys
-    are already high-entropy random tokens, not user-chosen secrets, so
-    slow password hashing adds CPU cost per request without adding
-    security here.
-    """
-
-    __tablename__ = "api_keys"
-    __table_args__ = (
-        db.Index("ix_api_keys_user_id", "user_id"),
-    )
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    key_hash = db.Column(db.String(64), unique=True, nullable=False)  # hex-encoded SHA-256
-    label = db.Column(db.String(200), nullable=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    last_used_at = db.Column(db.DateTime, nullable=True)
-    revoked_at = db.Column(db.DateTime, nullable=True)  # NULL = active
-
-    user = db.relationship("User")
-
-    @property
-    def is_active(self) -> bool:
-        return self.revoked_at is None
-
-    def __repr__(self):
-        return f"<ApiKey id={self.id} user={self.user_id} active={self.is_active}>"
-
-
 def slugify(value):
     """Turn a title into a URL-safe slug (no external deps required)."""
     import re

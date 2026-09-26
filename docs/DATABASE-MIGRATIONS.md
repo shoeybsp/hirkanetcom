@@ -146,16 +146,3 @@ registers the pre-existing flat `data/` directory as a `Device` row named
 zero snapshot files moved. This seeding step, not the migration itself,
 is what makes upgrading from a pre-multi-device install safe - the same
 role revision `20260731_0001` plays for pre-Alembic installs.
-
-## Revision 20260803_0006: API keys
-
-Adds `api_keys`, authenticating the additive FastAPI service (`api_v2/`,
-see the project README) against existing `User` rows rather than a
-separate identity concept. Only a SHA-256 hash of each key is ever
-stored; keys are issued via `flask --app api.app issue-api-key <username>`
-and shown once, never recoverable afterward.
-
-`api_v2` reads and writes this schema through its own plain SQLAlchemy
-models (`api_v2/models.py`), but never migrates it - Alembic, driven only
-from the Flask side documented in this file, remains the single source
-of schema truth for both services.

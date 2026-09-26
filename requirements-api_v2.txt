@@ -1,6 +1,0 @@
-# Everything else this service needs (SQLAlchemy, psycopg2-binary,
-# cryptography, requests) is already provided by requirements.txt, which
-# the api_v2 Dockerfile installs alongside this file - not repeated here
-# to avoid maintaining two possibly-conflicting pins for the same package.
-fastapi==0.115.6
-uvicorn[standard]==0.34.0

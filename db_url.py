@@ -1,10 +1,8 @@
 """Framework-agnostic database URL resolution.
 
-Extracted from models.py so that any additional service sharing this
-database - such as the FastAPI pilot in api_v2/ - resolves the connection
-the exact same way, rather than maintaining a second, potentially
-drifting copy of this logic. models.py::init_db calls resolve_database_url()
-too; this module has no Flask dependency.
+Extracted from models.py so that any service sharing this database
+resolves the connection the exact same way. models.py::init_db calls
+resolve_database_url() too; this module has no Flask dependency.
 
 Resolution order: DATABASE_URL > POSTGRES_HOST > local SQLite fallback.
 """

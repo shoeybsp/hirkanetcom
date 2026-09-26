@@ -21,7 +21,6 @@ The application supports multiple registered FortiGate devices, each with its ow
 - **Session-based auth** with CSRF protection, database-backed login rate limiting, and audit-logged admin actions
 - **Atomic, checksum-verified snapshots** — each collection run is immutable and versioned; the evaluator never reads a snapshot that's still being written
 - **Structured JSON logging**, with an optional Elastic (Elasticsearch/Logstash/Kibana/Filebeat) stack for centralized observability
-- **A second, additive FastAPI service** (`api_v2/`) for genuinely API-shaped integrations, authenticated by API key, sharing the same database as the main app — see [Architecture](#architecture) below
 
 ---
 
@@ -35,9 +34,8 @@ Full details, verified against the running codebase rather than written from mem
 | Policy evaluation engine | `engine/` — snapshot loading, CIDR matching, interface selection, ranking |
 | Policy risk assessment | `engine/risk_assessor.py` + `services/risk_assessment.py` — 4-dimension scoring, remediation guidance, subscription-gated access |
 | Device collection | `collectors/fortigate_collector.py` (core) + `collectors/sync_service.py` (per-device, admin-triggered) |
-| Data models | `models.py` (Flask-SQLAlchemy, primary schema) + `api_v2/models.py` (plain SQLAlchemy mirror for the FastAPI service) |
+| Data models | `models.py` (Flask-SQLAlchemy, primary schema) |
 | Schema migrations | `migrations/` — Alembic, the single source of schema truth |
-| Additive API service | `api_v2/` — FastAPI, API-key authenticated, shares the database via `db_url.py` |
 | Logging/observability | `logging_config.py`, `gunicorn_logging.py`, optional `docker-compose.elastic.yml` stack |
 
 ---
@@ -45,7 +43,6 @@ Full details, verified against the running codebase rather than written from mem
 ## Tech stack
 
 - **Python 3.12**, **Flask 3** (Flask-SQLAlchemy, Flask-Login, Flask-WTF, Flask-Migrate/Alembic)
-- **FastAPI** + **Uvicorn** for the additive `api_v2` service
 - **PostgreSQL** in production, **SQLite** as a zero-config local-dev fallback
 - **Gunicorn** as the production WSGI server
 - **Docker Compose** for orchestration; a separate, optional Compose project for the Elastic stack
@@ -58,7 +55,6 @@ Full details, verified against the running codebase rather than written from mem
 ```
 hirkanet/
 ├── api/              Flask app factory, login/CSRF/error handling, CLI commands
-├── api_v2/           Additive FastAPI service (plain SQLAlchemy, API-key auth)
 ├── admin/            Admin panel routes (users, services, devices, blog)
 ├── client/           Client-facing routes (dashboard, policy evaluation, risk assessment) + access control
 ├── main/             Public routes (home, blog)
@@ -68,9 +64,9 @@ hirkanet/
 ├── services/         Service layer (policy search, risk assessment) with snapshot loading, filtering, pagination
 ├── validation/       Input validation for admin, evaluation, catalog, and risk assessment requests
 ├── models.py          Primary Flask-SQLAlchemy schema
-├── db_url.py          Shared DB URL resolution (used by both services)
+├── db_url.py          Shared DB URL resolution
 ├── database_transactions.py   Transaction/error-handling helpers
-├── secret_crypto.py / secret_utils.py / api_keys.py / security.py   Secrets & credential handling
+├── secret_crypto.py / secret_utils.py / security.py   Secrets & credential handling
 ├── migrations/        Alembic migration history
 ├── templates/          Jinja2 templates (admin, client, auth, main, blog)
 ├── static/             CSS/JS/images
@@ -107,7 +103,7 @@ sudo chown -R 10001:10001 uploads static/uploads
 docker compose up -d --build
 ```
 
-This starts `db` (Postgres), runs `migrate` (schema migrations + default data seeding, one-shot), then starts `app` (the main Flask application, on `127.0.0.1:5000`) and `api_v2` (the FastAPI pilot service, on `127.0.0.1:8010`).
+This starts `db` (Postgres), runs `migrate` (schema migrations + default data seeding, one-shot), then starts `app` (the main Flask application, on `127.0.0.1:5000`).
 
 ```bash
 docker compose logs migrate --tail=30    # confirm migrations applied cleanly
@@ -137,13 +133,6 @@ python -m flask --app api.app run --debug
 ```
 
 Open `http://127.0.0.1:5000` and log in with the bootstrap admin credentials above. This uses a local `fortigate_policy.db` SQLite file — no Postgres required.
-
-To also run the FastAPI service locally:
-
-```bash
-pip install -r requirements-api_v2.txt
-python -m uvicorn api_v2.main:app --port 8010
-```
 
 ---
 
@@ -184,22 +173,6 @@ Other values worth understanding before deploying:
 5. Clients see only their assigned, active devices in the policy evaluation page's device selector.
 
 Existing single-device installs are migrated forward automatically: the first time the app starts after upgrading, the pre-existing `data/` directory is registered as a device named "Default FortiGate" — no snapshot files are moved.
-
----
-
-## The additive API service (`api_v2`)
-
-A second, separate FastAPI service for genuinely API-shaped needs (external integrations, not more server-rendered pages) — it does not replace or modify the main Flask application in any way, and shares one database with it via `db_url.py`.
-
-```bash
-# issue an API key for an existing user (prints the raw key once - it cannot be shown again)
-flask --app api.app issue-api-key <username> --label "some integration"
-
-curl http://127.0.0.1:8010/livez
-curl -H "X-API-Key: <key>" http://127.0.0.1:8010/whoami
-```
-
-This service is under active, incremental development — currently health checks and API-key authentication only. See `docs/architecture.md` section 10 for the current scope and rationale for keeping it additive rather than migrating the whole application.
 
 ---
 
