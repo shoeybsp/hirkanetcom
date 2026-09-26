@@ -1,0 +1,8 @@
+# Ignore Git LFS files
+*.lfs
+.git/
+.gitattributes
+.git/
+.gitignore
+docs/
+*.pdf
