@@ -1,90 +1,151 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>My Services - SecureTrack-Lite</title>
+    <title>My Dashboard - SecureTrack-Lite</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
 </head>
-<body>
-<div class="container py-4 main-container">
+<body class="hk-admin-body">
 
-    <header class="stl-header mb-4">
-        <div class="stl-brand">
-            <div>
-                <div class="stl-hero-pill">Secure access workspace</div>
-                <h1 class="stl-title">My Dashboard</h1>
-                <p class="stl-subtitle">Review your available services and open the policy evaluation workspace when access is enabled.</p>
-            </div>
+<div class="hk-admin-layout">
+    <aside class="hk-sidebar" id="hkSidebar">
+        <div class="hk-sidebar-brand">
+            <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                <span class="hk-sidebar-brand-text">SecureTrack-Lite</span>
+            </a>
         </div>
-        <div class="stl-user-nav">
-            <span class="stl-user-info">
-                <span class="stl-user-role-badge stl-user-role-{{ current_user.role }}">
-                    {{ current_user.role }}
-                </span>
-                <span class="stl-username">{{ current_user.username }}</span>
-            </span>
+
+        <nav class="hk-sidebar-nav">
+            <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-link active">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="{{ url_for('client.policy_evaluation') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Policy Evaluation</span>
+            </a>
+            <a href="{{ url_for('client.policy_catalog') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span>Policy Catalog</span>
+            </a>
+        </nav>
+
+        <div class="hk-sidebar-footer">
+            <div class="hk-sidebar-user">
+                <span class="hk-sidebar-role-badge">{{ current_user.role }}</span>
+                <span class="hk-sidebar-username">{{ current_user.username }}</span>
+            </div>
             <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
-
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <button type="submit" class="stl-nav-link stl-nav-logout" title="Sign out">Sign Out</button>
-
+                <button type="submit" class="hk-sidebar-link hk-sidebar-logout">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Sign Out</span>
+                </button>
             </form>
         </div>
-    </header>
+    </aside>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    {% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
+    <main class="hk-main">
+        <header class="hk-main-header">
+            <button class="hk-sidebar-toggle" id="hkSidebarToggle" aria-label="Toggle sidebar">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div class="hk-header-left">
+                <h1 class="hk-page-title">My Dashboard</h1>
+                <p class="hk-page-subtitle">Review your available services and open the policy evaluation workspace when access is enabled.</p>
+            </div>
+        </header>
 
-    {% if services %}
-    <div class="row g-4">
-        {% for svc in services %}
-        <div class="col-md-6 col-lg-4">
-            <div class="card stl-card h-100">
-                <div class="card-body d-flex flex-column">
-                    <div class="d-flex justify-content-between align-items-start mb-3">
-                        <h5 class="card-title mb-0">{{ svc.name }}</h5>
-                        <span class="stl-hero-pill">Active</span>
-                    </div>
-                    <p class="card-text flex-grow-1" style="color: var(--stl-muted); line-height: 1.6;">
-                        {{ svc.description or 'No description available.' }}
-                    </p>
+        <div class="hk-main-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <div class="row g-3">
+                {% if services %}
+                {% for svc in services %}
+                <div class="col-md-6">
                     {% if svc.service_type == 'policy_evaluation' %}
-                    <a href="{{ url_for('client.policy_evaluation') }}" class="btn btn-primary stl-btn-primary mt-2">
-                        Open Service
+                    <a href="{{ url_for('client.policy_evaluation') }}" class="hk-mgmt-card">
+                        <div class="hk-mgmt-card-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </div>
+                        <h2 class="hk-mgmt-card-title">{{ svc.name }}</h2>
+                        <p class="hk-mgmt-card-desc">{{ svc.description or 'Evaluate FortiGate firewall policies for new access requests.' }}</p>
+                        <span class="hk-mgmt-card-arrow">
+                            Open Service
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        </span>
                     </a>
                     {% else %}
-                    <button class="btn btn-secondary mt-2" disabled>Coming Soon</button>
+                    <div class="hk-mgmt-card" style="opacity:0.6;">
+                        <div class="hk-mgmt-card-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        </div>
+                        <h2 class="hk-mgmt-card-title">{{ svc.name }}</h2>
+                        <p class="hk-mgmt-card-desc">{{ svc.description or 'No description available.' }}</p>
+                        <span class="hk-mgmt-card-arrow" style="color:var(--stl-muted);">Coming Soon</span>
+                    </div>
                     {% endif %}
                 </div>
+                {% endfor %}
+                {% endif %}
+
+                <!-- Policy Catalog Card -->
+                <div class="col-md-6">
+                    <a href="{{ url_for('client.policy_catalog') }}" class="hk-mgmt-card">
+                        <div class="hk-mgmt-card-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        </div>
+                        <h2 class="hk-mgmt-card-title">Policy Catalog</h2>
+                        <p class="hk-mgmt-card-desc">Browse, search, and filter collected firewall policies across your assigned devices.</p>
+                        <span class="hk-mgmt-card-arrow">
+                            Open Catalog
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        </span>
+                    </a>
+                </div>
+
+                {% if not services %}
+                <div class="col-12">
+                    <div class="hk-mgmt-card text-center" style="border:none;">
+                        <div class="card-body py-5 stl-empty-state">
+                            <h3 class="mb-3" style="color: #f8fbff;">No Services Available</h3>
+                            <p style="color: var(--stl-muted); max-width: 540px; margin: 0 auto;">
+                                You don't have any active subscriptions yet. Please contact your administrator to request access to the services you need.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="card stl-card text-center">
-        <div class="card-body py-5 stl-empty-state">
-            <h3 class="mb-3" style="color: #f8fbff;">No Services Available</h3>
-            <p style="color: var(--stl-muted); max-width: 540px; margin: 0 auto;">
-                You don't have any active subscriptions yet. Please contact your administrator to request access to the services you need.
-            </p>
-        </div>
-    </div>
-    {% endif %}
 
-    <footer class="stl-footer mt-4">
-        <span class="stl-footer-text">SecureTrack-Lite · Client Portal</span>
-    </footer>
-
+        <footer class="hk-main-footer">
+            <span>SecureTrack-Lite &middot; Client Portal</span>
+        </footer>
+    </main>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function() {
+    var sidebar = document.getElementById('hkSidebar');
+    var toggle = document.getElementById('hkSidebarToggle');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function() {
+            sidebar.classList.toggle('hk-sidebar-collapsed');
+        });
+    }
+})();
+</script>
 </body>
 </html>
