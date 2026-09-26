@@ -70,14 +70,14 @@
             {% endwith %}
 
             {% if devices %}
-            <!-- Device Selector -->
-            <div class="hk-mgmt-card hk-compact-card mb-4" style="border:none;">
+            <!-- Device + Search/Filters (merged, compact) -->
+            <div class="hk-mgmt-card hk-compact-card mb-3" style="border:none;">
                 <div class="card-body">
-                    <form method="GET" action="{{ url_for('client.policy_catalog') }}" class="stl-form" id="deviceSwitchForm" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
-                        <div style="flex:1; min-width:200px;">
-                            <label class="form-label fw-semibold label-color" for="deviceSelect">Device</label>
+                    <form id="policySearchForm" class="stl-form hk-compact-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+                        <div style="flex:1 1 180px; min-width:160px;">
+                            <label class="form-label small mb-1" for="deviceSelect">Device</label>
                             <select name="device_id" id="deviceSelect" class="form-select form-select-sm stl-input"
-                                    onchange="document.getElementById('deviceSwitchForm').submit();">
+                                    onchange="window.location.href='{{ url_for('client.policy_catalog') }}?device_id='+encodeURIComponent(this.value);">
                                 {% for device in devices %}
                                 <option value="{{ device.id }}" {% if selected_device and device.id == selected_device.id %}selected{% endif %}>
                                     {{ device.name }}{% if device.api_host %} ({{ device.api_host }}){% endif %}
@@ -85,34 +85,12 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        {% if selected_device %}
-                        <div style="flex:2; min-width:200px;">
-                            <div class="form-text stl-help-text" style="margin-top:0;">
-                                {% if selected_device.last_sync_at %}
-                                    Data last collected {{ selected_device.last_sync_at.strftime('%Y-%m-%d %H:%M UTC') }}.
-                                {% else %}
-                                    This device has never been synced.
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endif %}
-                        <noscript><button type="submit" class="btn btn-secondary btn-sm">Switch</button></noscript>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Search and Filters -->
-            <div class="hk-mgmt-card mb-4" style="border:none;">
-                <div class="card-body py-3">
-                    <form id="policySearchForm" class="stl-form" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
-                        <input type="hidden" name="device_id" value="{{ selected_device.id if selected_device else '' }}">
-
-                        <div style="flex:2; min-width:160px;">
+                        <div style="flex:2 1 140px; min-width:130px;">
                             <label class="form-label small mb-1" for="nameFilter">Name</label>
                             <input type="text" id="nameFilter" name="name" class="form-control form-control-sm stl-input"
                                    placeholder="Search..." autocomplete="off">
                         </div>
-                        <div style="flex:1; min-width:110px;">
+                        <div style="flex:0 1 100px; min-width:90px;">
                             <label class="form-label small mb-1" for="actionFilter">Action</label>
                             <select id="actionFilter" name="action" class="form-select form-select-sm stl-input">
                                 <option value="">All</option>
@@ -120,22 +98,22 @@
                                 <option value="deny">Deny</option>
                             </select>
                         </div>
-                        <div style="flex:1; min-width:160px; position:relative;">
+                        <div style="flex:1 1 130px; min-width:120px; position:relative;">
                             <label class="form-label small mb-1" for="serviceFilter">Service</label>
                             <input type="text" id="serviceFilter" name="service" class="form-control form-control-sm stl-input"
-                                   placeholder="Type to search..." autocomplete="off">
+                                   placeholder="Type..." autocomplete="off">
                             <div class="stl-dropdown-menu" id="serviceDropdown"></div>
                         </div>
-                        <div style="flex:1; min-width:160px; position:relative;">
+                        <div style="flex:1 1 130px; min-width:120px; position:relative;">
                             <label class="form-label small mb-1" for="srcaddrFilter">Source</label>
                             <input type="text" id="srcaddrFilter" name="srcaddr" class="form-control form-control-sm stl-input"
-                                   placeholder="Type to search..." autocomplete="off">
+                                   placeholder="Type..." autocomplete="off">
                             <div class="stl-dropdown-menu" id="srcaddrDropdown"></div>
                         </div>
-                        <div style="flex:1; min-width:160px; position:relative;">
+                        <div style="flex:1 1 130px; min-width:120px; position:relative;">
                             <label class="form-label small mb-1" for="dstaddrFilter">Destination</label>
                             <input type="text" id="dstaddrFilter" name="dstaddr" class="form-control form-control-sm stl-input"
-                                   placeholder="Type to search..." autocomplete="off">
+                                   placeholder="Type..." autocomplete="off">
                             <div class="stl-dropdown-menu" id="dstaddrDropdown"></div>
                         </div>
                         <div style="flex:0;">
@@ -145,6 +123,15 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="clearFiltersBtn">Clear</button>
                         </div>
                     </form>
+                    {% if selected_device %}
+                    <div class="form-text stl-help-text" style="margin:6px 0 0;">
+                        {% if selected_device.last_sync_at %}
+                            Data last collected {{ selected_device.last_sync_at.strftime('%Y-%m-%d %H:%M UTC') }}.
+                        {% else %}
+                            This device has never been synced.
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 

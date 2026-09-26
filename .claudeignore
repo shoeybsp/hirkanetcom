@@ -1,8 +1,13 @@
-# Ignore Git LFS files
-*.lfs
-.git/
-.gitattributes
-.git/
-.gitignore
-docs/
+.git
+docs
+static
+templates
+tests
+secrets
 *.pdf
+*.min.css
+*.min.js
+node_modules
+__pycache__
+*.pyc
+.env
