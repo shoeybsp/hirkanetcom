@@ -71,9 +71,7 @@ def load_user(user_id):
 from admin.routes import admin_bp
 from client.routes import client_bp
 from main.routes import main_bp
-from api.policies.routes import policy_api_bp
 app.register_blueprint(admin_bp); app.register_blueprint(client_bp); app.register_blueprint(main_bp)
-app.register_blueprint(policy_api_bp)
 
 
 @app.errorhandler(DatabaseTransactionError)

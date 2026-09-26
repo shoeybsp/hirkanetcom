@@ -10,7 +10,8 @@ metadata:
 **Repository:** `hirkanetcom`
 
 Hirkanet is a Flask-based web application that evaluates FortiGate firewall
-policy access requests against collected device configuration. It supports
+policy access requests against collected device configuration and provides
+a policy catalog for browsing and searching collected policies. It supports
 multiple registered devices, each with its own credentials, collected
 snapshot data, and set of authorized client users.
 
@@ -30,8 +31,9 @@ noted, against a running instance - not carried over from prior notes.
     limiting (`rate_limit.py`). `auth/user_store.py` is dead code left over
     from a pre-SQLAlchemy user store; it is not imported anywhere and
     `tests/test_no_legacy_user_store.py` expects it to be deleted.
-  - `client/` - the client-facing dashboard and Policy Evaluation service
-    (`routes.py`), plus authorization helpers (`access.py`).
+  - `client/` - the client-facing dashboard, Policy Evaluation service, and
+    Policy Catalog service (`routes.py`), plus authorization helpers
+    (`access.py`).
   - `admin/` - the admin panel: user, service, blog, and device management
     (`routes.py`).
 - **Gunicorn:** Production WSGI server via `gunicorn.conf.py`. No explicit
@@ -139,6 +141,31 @@ collected and independently assigned to clients.
   unassigned device gets a 403 with no snapshot data in the response, on
   all three paths (GET catalog, single POST, batch POST) - verified with a
   second client account under an intentionally cross-device attack test.
+
+---
+## 4b. Policy Search / Catalog Service
+
+- **Purpose:** Allows authenticated clients to browse, search, and filter
+  collected firewall policies across their assigned devices. No subscription
+  gating — accessible to any client with device access.
+- **Service layer:** `services/policy_search.py` (`PolicySearchService`) -
+  loads a device's snapshot via `engine/snapshot_store.py::load_snapshot_dataset`,
+  normalizes policy data, and provides filtering/sorting/pagination. Also
+  exposes `get_filter_options()` to supply unique address and service names
+  for autocomplete dropdowns.
+- **Client routes** (`client/routes.py`):
+  - `GET /client/policies` — server-rendered policy catalog page with
+    device selector, filter form, and results table.
+  - `GET|POST /client/policies/results` — JSON endpoint returning filtered
+    policies with pagination. Used by the catalog page's JavaScript.
+- **Validation:** `validation/policies.py` — validates query parameters
+  (action, status, limit, offset, sort_by, sort_order).
+- **Filter options:** Address and service lists are extracted from the
+  snapshot on page load and passed to the template for searchable dropdown
+  autocomplete. The dropdowns filter client-side as the user types.
+- **Authorization:** Same `client/access.py` helpers as Policy Evaluation.
+  Device access is enforced at both the catalog page route and the JSON
+  results endpoint.
 
 ---
 ## 5. Persistence Layer
@@ -301,9 +328,10 @@ Concrete, verified items - not speculative "future work":
    snapshot was exported, or true of the actual working tree.
 
 ---
-*Rewritten to reflect the multi-device inventory, per-device sync, and
-per-device evaluation work, and to replace prior claims that could not be
-verified against the current codebase with claims that were - the test
-counts, the SQLite pragma fix, the container UID pin, the PyYAML gap, and
-the secrets-wiring comparison were all reproduced against a real run
-described inline above, not asserted from memory.*
+*Rewritten to reflect the multi-device inventory, per-device sync,
+per-device evaluation work, and the Policy Search/Catalog service, and to
+replace prior claims that could not be verified against the current codebase
+with claims that were - the test counts, the SQLite pragma fix, the container
+UID pin, the PyYAML gap, and the secrets-wiring comparison were all
+reproduced against a real run described inline above, not asserted from
+memory.*
