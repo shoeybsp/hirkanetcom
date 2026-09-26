@@ -10,10 +10,11 @@ metadata:
 **Repository:** `hirkanetcom`
 
 Hirkanet is a Flask-based web application that evaluates FortiGate firewall
-policy access requests against collected device configuration and provides
-a policy catalog for browsing and searching collected policies. It supports
-multiple registered devices, each with its own credentials, collected
-snapshot data, and set of authorized client users.
+policy access requests against collected device configuration, provides
+a policy catalog for browsing and searching collected policies, and
+scores policies by security risk with actionable remediation guidance.
+It supports multiple registered devices, each with its own credentials,
+collected snapshot data, and set of authorized client users.
 
 Every claim below was verified against the actual codebase and, where
 noted, against a running instance - not carried over from prior notes.
@@ -166,6 +167,71 @@ collected and independently assigned to clients.
 - **Authorization:** Same `client/access.py` helpers as Policy Evaluation.
   Device access is enforced at both the catalog page route and the JSON
   results endpoint.
+
+---
+## 4c. Policy Risk Assessment Service
+
+- **Purpose:** Scores every policy in a device's snapshot on a 0–100 risk
+  scale across four weighted dimensions, surfaces the highest-risk policies,
+  and provides actionable remediation guidance per finding. Access is gated
+  behind the `policy_risk_assessment` subscription (admin must grant it per
+  user), unlike Policy Catalog which is open to any authenticated client
+  with device access.
+
+- **Engine:** `engine/risk_assessor.py` (`PolicyRiskAssessor`, ~430 lines) —
+  loads one device's snapshot via `engine/snapshot_store.py`, builds address
+  and service lookup maps, and scores every policy. Dimensions and weights:
+
+  | Dimension            | Weight | What it checks |
+  |----------------------|--------|----------------|
+  | Address Scope        | 35%    | Rules using `all`, `0.0.0.0/0`, or wildcard addresses |
+  | Logging Gaps         | 25%    | Accept rules without logging enabled |
+  | Config Weakness      | 25%    | Disabled rules, overly broad service definitions, excessive per-rule timeouts (>7200s), TLS inspection gaps |
+  | Staleness            | 15%    | Rules last modified >90 days ago |
+
+  Risk levels: `critical` (≥80), `high` (≥60), `medium` (≥40), `low`
+  (≥20), `info` (<20). Each dimension produces a `RiskFactor` with its
+  own score and list of `Finding` objects. Final score is the weighted sum,
+  clamped to 0–100. Each policy result includes a `remediation` list of
+  actionable items (e.g. "Add logging", "Replace 'all' address with
+  specific subnet").
+
+- **Service layer:** `services/risk_assessment.py` (`RiskAssessmentService`,
+  ~100 lines) — follows the same snapshot-loading pattern as
+  `PolicySearchService`. `get_assessment()` supports filtering by
+  `risk_level`, `dimension`, `min_score`, and policy `name`, with pagination
+  (`limit`/`offset`) and sorting (`sort_by`/`sort_order`). Also exposes
+  `get_policy_detail(policy_id)` for the modal view of a single policy's
+  factors and remediation items, and `get_summary()` for the dashboard
+  summary cards (counts per risk level, average score).
+
+- **Validation:** `validation/risk_assessment.py` — validates query
+  parameters for the assessment and detail endpoints (risk_level, dimension,
+  min_score, limit, offset, sort_by, sort_order).
+
+- **Client routes** (`client/routes.py`):
+  - `GET /client/risk-assessment` — server-rendered page with device
+    selector. Requires `policy_risk_assessment` subscription.
+  - `GET|POST /client/risk-assessment/results` — JSON endpoint returning
+    filtered, paginated risk results plus summary statistics. Used by the
+    page's JavaScript.
+  - `GET /client/risk-assessment/policy/<policy_id>` — JSON endpoint
+    returning a single policy's full risk breakdown (factors, findings,
+    remediation).
+
+- **Template:** `templates/client/risk_assessment.html` (~500 lines) —
+  device selector, filter controls (risk level, dimension, min score, name),
+  summary cards row (total policies, average score, counts per risk level),
+  sortable results table with inline score bars and risk-level badges, and a
+  detail modal showing all four risk factors with their findings and
+  remediation items.
+
+- **Authorization:** Two-layer gating — `@subscription_required(
+  "policy_risk_assessment")` on every route (returns 403 if the user lacks
+  the subscription), plus `has_device_access()` to ensure the user can only
+  see data for their assigned devices. The admin must grant the
+  `policy_risk_assessment` subscription via `/admin/services` before a client
+  can access the service.
 
 ---
 ## 5. Persistence Layer
@@ -329,9 +395,9 @@ Concrete, verified items - not speculative "future work":
 
 ---
 *Rewritten to reflect the multi-device inventory, per-device sync,
-per-device evaluation work, and the Policy Search/Catalog service, and to
-replace prior claims that could not be verified against the current codebase
-with claims that were - the test counts, the SQLite pragma fix, the container
-UID pin, the PyYAML gap, and the secrets-wiring comparison were all
-reproduced against a real run described inline above, not asserted from
-memory.*
+per-device evaluation work, the Policy Search/Catalog service, and the
+Policy Risk Assessment service, and to replace prior claims that could not
+be verified against the current codebase with claims that were - the test
+counts, the SQLite pragma fix, the container UID pin, the PyYAML gap, and
+the secrets-wiring comparison were all reproduced against a real run
+described inline above, not asserted from memory.*

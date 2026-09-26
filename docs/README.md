@@ -2,7 +2,7 @@
 
 **Application Delivery. Cyber Security. Assured.**
 
-Hirkanet is a web application that evaluates firewall policy access requests against real, collected device configuration — inspired by Tufin SecureTrack, built for FortiGate. Its core policy-evaluation engine, **SecureTrack‑Lite**, ranks candidate policies by least-privilege fit rather than just returning a yes/no answer, so an operator can see *why* a request would or wouldn't be allowed and what the closest safer alternative looks like.
+Hirkanet is a web application that evaluates firewall policy access requests against real, collected device configuration — inspired by Tufin SecureTrack, built for FortiGate. Its core policy-evaluation engine, **SecureTrack‑Lite**, ranks candidate policies by least-privilege fit rather than just returning a yes/no answer, so an operator can see *why* a request would or wouldn't be allowed and what the closest safer alternative looks like. It also includes a **Policy Risk Assessment** service that automatically scores every collected policy on a 0–100 risk scale across four weighted dimensions (address scope, logging gaps, config weaknesses, staleness) and provides actionable remediation guidance per finding.
 
 The application supports multiple registered FortiGate devices, each with its own encrypted credentials, its own collected snapshot data, and its own set of authorized client users — managed entirely through an admin panel, with no manual file editing required.
 
@@ -13,6 +13,7 @@ The application supports multiple registered FortiGate devices, each with its ow
 ## Features
 
 - **Policy evaluation** — submit a source, destination, and service (or a batch CSV of many) and get back ranked candidate policies, scored by coverage, interface alignment, and least-privilege fit
+- **Policy risk assessment** — automated scoring of every collected policy on a 0–100 risk scale across four dimensions (address scope, logging gaps, config weaknesses, staleness), with per-policy remediation guidance and filterable results. Gated behind its own subscription; admins grant access per user
 - **Multi-device inventory** — admins register any number of FortiGate devices, each with its own API host, credentials (encrypted at rest, never displayed again after entry), VDOM, and collection settings
 - **Per-device sync** — a "Sync Now" button runs the collector for a single device on demand, in addition to (or instead of) a scheduled cron job
 - **Device assignment** — admins grant individual client users access to specific devices; a client only ever sees and evaluates against devices they've been assigned, enforced at every entry point (page load, single evaluation, batch evaluation)
@@ -32,6 +33,7 @@ Full details, verified against the running codebase rather than written from mem
 |---|---|
 | Web app (admin panel, client UI, session auth) | Flask, `api/app.py` + `admin/`, `client/`, `main/`, `auth/` blueprints |
 | Policy evaluation engine | `engine/` — snapshot loading, CIDR matching, interface selection, ranking |
+| Policy risk assessment | `engine/risk_assessor.py` + `services/risk_assessment.py` — 4-dimension scoring, remediation guidance, subscription-gated access |
 | Device collection | `collectors/fortigate_collector.py` (core) + `collectors/sync_service.py` (per-device, admin-triggered) |
 | Data models | `models.py` (Flask-SQLAlchemy, primary schema) + `api_v2/models.py` (plain SQLAlchemy mirror for the FastAPI service) |
 | Schema migrations | `migrations/` — Alembic, the single source of schema truth |
@@ -58,12 +60,13 @@ hirkanet/
 ├── api/              Flask app factory, login/CSRF/error handling, CLI commands
 ├── api_v2/           Additive FastAPI service (plain SQLAlchemy, API-key auth)
 ├── admin/            Admin panel routes (users, services, devices, blog)
-├── client/           Client-facing routes (dashboard, policy evaluation) + access control
+├── client/           Client-facing routes (dashboard, policy evaluation, risk assessment) + access control
 ├── main/             Public routes (home, blog)
 ├── auth/             Login forms, rate limiting
-├── engine/           Evaluation engine, snapshot store, CIDR/interface logic
+├── engine/           Evaluation engine, risk assessor, snapshot store, CIDR/interface logic
 ├── collectors/       FortiGate REST collector + per-device sync service
-├── validation/       Input validation for admin, evaluation, and upload requests
+├── services/         Service layer (policy search, risk assessment) with snapshot loading, filtering, pagination
+├── validation/       Input validation for admin, evaluation, catalog, and risk assessment requests
 ├── models.py          Primary Flask-SQLAlchemy schema
 ├── db_url.py          Shared DB URL resolution (used by both services)
 ├── database_transactions.py   Transaction/error-handling helpers
