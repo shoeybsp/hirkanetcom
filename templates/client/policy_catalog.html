@@ -4,6 +4,23 @@
     <title>Policy Catalog - SecureTrack-Lite</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <style>
+        .policy-detail-section h6 {
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .policy-detail-section .table th {
+            font-weight: 500;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+        .policy-detail-section .table td {
+            word-break: break-word;
+        }
+        .modal-xl {
+            max-width: 900px;
+        }
+    </style>
 </head>
 <body class="hk-admin-body">
 
@@ -212,7 +229,7 @@
 
 <!-- Policy Detail Modal -->
 <div class="modal fade" id="policyDetailModal" tabindex="-1" aria-labelledby="policyDetailModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="policyDetailModalLabel">Policy Details</h5>
@@ -228,7 +245,7 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/bootstrap/5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 (function() {
     var sidebar = document.getElementById('hkSidebar');
@@ -256,6 +273,7 @@
     let currentPage = 0;
     let currentLimit = 100;
     let totalResults = 0;
+    let currentDeviceId = null;
 
     // Filter option data from server
     const filterAddresses = {{ filter_addresses|tojson }};
@@ -404,7 +422,8 @@
                 <td>${(p.srcintf || []).join(', ')} &rarr; ${(p.dstintf || []).join(', ')}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-primary view-detail-btn"
-                            data-policy='${JSON.stringify(p).replace(/'/g, "&#39;")}'>
+                            data-policy-id="${p.policyid || ''}"
+                            data-device-id="${currentDeviceId || ''}">
                         Details
                     </button>
                 </td>
@@ -416,35 +435,311 @@
         resultsEmpty.style.display = 'none';
 
         tbody.querySelectorAll('.view-detail-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const policy = JSON.parse(this.getAttribute('data-policy'));
-                showPolicyDetail(policy);
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const policyId = this.getAttribute('data-policy-id');
+                const deviceId = this.getAttribute('data-device-id');
+                console.log('Detail button clicked:', { policyId, deviceId });
+                showPolicyDetail(policyId, deviceId);
             });
         });
     }
 
-    function showPolicyDetail(policy) {
+    function showPolicyDetail(policyId, deviceId) {
         const body = document.getElementById('policyDetailBody');
-        const modal = new bootstrap.Modal(document.getElementById('policyDetailModal'));
+        const modalElement = document.getElementById('policyDetailModal');
 
-        let html = `
-            <table class="table">
-                <tr><th>Policy ID</th><td>${policy.policyid || 'N/A'}</td></tr>
-                <tr><th>Name</th><td>${escapeHtml(policy.name || 'N/A')}</td></tr>
-                <tr><th>Action</th><td><span class="badge ${policy.action === 'accept' ? 'bg-success' : 'bg-danger'}">${escapeHtml(policy.action || 'N/A')}</span></td></tr>
-                <tr><th>Status</th><td>${escapeHtml(policy.status || 'N/A')}</td></tr>
-                <tr><th>Source Addresses</th><td>${(policy.srcaddr || []).join(', ') || 'Any'}</td></tr>
-                <tr><th>Destination Addresses</th><td>${(policy.dstaddr || []).join(', ') || 'Any'}</td></tr>
-                <tr><th>Services</th><td>${(policy.service || []).join(', ') || 'Any'}</td></tr>
-                <tr><th>Source Interfaces</th><td>${(policy.srcintf || []).join(', ') || 'Any'}</td></tr>
-                <tr><th>Destination Interfaces</th><td>${(policy.dstintf || []).join(', ') || 'Any'}</td></tr>
-                <tr><th>Log Traffic</th><td>${escapeHtml(policy.logtraffic || 'N/A')}</td></tr>
-                <tr><th>Schedule</th><td>${escapeHtml(policy.schedule || 'N/A')}</td></tr>
-                <tr><th>UTM Status</th><td>${escapeHtml(policy.utm_status || 'N/A')}</td></tr>
-            </table>
-        `;
-        body.innerHTML = html;
+        if (!body || !modalElement) {
+            console.error('Modal elements not found');
+            return;
+        }
+
+        // Check if Bootstrap is available
+        if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+            console.error('Bootstrap Modal not available');
+            alert('Bootstrap JavaScript not loaded. Please refresh the page.');
+            return;
+        }
+
+        const modal = new bootstrap.Modal(modalElement);
+
+        // Show loading state
+        body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
         modal.show();
+
+        // Validate inputs
+        if (!policyId || !deviceId) {
+            body.innerHTML = '<div class="alert alert-warning">Missing policy ID or device ID.</div>';
+            console.error('Missing policyId or deviceId:', { policyId, deviceId });
+            return;
+        }
+
+        // Fetch full policy details
+        const url = `/client/policies/${encodeURIComponent(policyId)}?device_id=${encodeURIComponent(deviceId)}`;
+        console.log('Fetching policy details from:', url);
+
+        fetch(url)
+            .then(r => {
+                console.log('Response status:', r.status);
+                if (!r.ok) {
+                    return r.text().then(text => {
+                        let msg = 'Server error (' + r.status + ')';
+                        try { const j = JSON.parse(text); msg = j.message || j.error || msg; } catch(e) {}
+                        throw new Error(msg);
+                    });
+                }
+                return r.json();
+            })
+            .then(response => {
+                console.log('Response data:', response);
+                if (response.error) {
+                    body.innerHTML = `<div class="alert alert-danger">${escapeHtml(response.message || 'Failed to load policy details.')}</div>`;
+                    return;
+                }
+                const policy = response.data;
+                renderPolicyDetailModal(policy, body);
+            })
+            .catch(err => {
+                console.error('Fetch error:', err);
+                body.innerHTML = `<div class="alert alert-danger">Failed to load policy details: ${escapeHtml(err.message || 'Unknown error')}</div>`;
+            });
+    }
+
+    function renderPolicyDetailModal(policy, body) {
+        // Update modal title
+        const modalTitle = document.getElementById('policyDetailModalLabel');
+        if (modalTitle) {
+            modalTitle.textContent = `Policy #${policy.policyid || ''} - ${policy.name || 'Details'}`;
+        }
+
+        // Helper functions
+        function extractNames(items) {
+            if (!items || !Array.isArray(items)) return [];
+            return items.map(item => {
+                if (typeof item === 'object' && item !== null) return item.name || '';
+                return String(item);
+            }).filter(n => n);
+        }
+
+        function formatValue(value) {
+            if (value === null || value === undefined || value === '') return '<span class="text-muted">N/A</span>';
+            if (typeof value === 'boolean') return value ? '<span class="badge bg-success">Enabled</span>' : '<span class="badge bg-secondary">Disabled</span>';
+            if (value === 'enable') return '<span class="badge bg-success">Enabled</span>';
+            if (value === 'disable') return '<span class="badge bg-secondary">Disabled</span>';
+            if (Array.isArray(value)) {
+                const items = extractNames(value);
+                return items.length > 0 ? items.join(', ') : '<span class="text-muted">None</span>';
+            }
+            return escapeHtml(String(value));
+        }
+
+        function formatInterface(items) {
+            const names = extractNames(items);
+            return names.length > 0 ? names.join(', ') : '<span class="text-muted">Any</span>';
+        }
+
+        function formatAddresses(items) {
+            const names = extractNames(items);
+            return names.length > 0 ? names.join(', ') : '<span class="text-muted">Any</span>';
+        }
+
+        // Build sections
+        let html = '';
+
+        // Section: General Information
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                General Information
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Policy ID</th><td>${policy.policyid || 'N/A'}</td></tr>
+                <tr><th>Name</th><td>${escapeHtml(policy.name || 'N/A')}</td></tr>
+                <tr><th>UUID</th><td><code class="text-break">${escapeHtml(policy.uuid || 'N/A')}</code></td></tr>
+                <tr><th>Action</th><td><span class="badge ${policy.action === 'accept' ? 'bg-success' : 'bg-danger'}">${escapeHtml((policy.action || 'N/A').toUpperCase())}</span></td></tr>
+                <tr><th>Status</th><td>${formatValue(policy.status)}</td></tr>
+                <tr><th>Comments</th><td>${escapeHtml(policy.comments || '') || '<span class="text-muted">None</span>'}</td></tr>
+                <tr><th>Label</th><td>${escapeHtml(policy.label || '') || '<span class="text-muted">None</span>'}</td></tr>
+                <tr><th>Global Label</th><td>${escapeHtml(policy['global-label'] || '') || '<span class="text-muted">None</span>'}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Source & Destination
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Source & Destination
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Source Addresses</th><td>${formatAddresses(policy.srcaddr)}</td></tr>
+                <tr><th>Source Address Negate</th><td>${formatValue(policy['srcaddr-negate'])}</td></tr>
+                <tr><th>Destination Addresses</th><td>${formatAddresses(policy.dstaddr)}</td></tr>
+                <tr><th>Destination Address Negate</th><td>${formatValue(policy['dstaddr-negate'])}</td></tr>
+                <tr><th>Source Interfaces</th><td>${formatInterface(policy.srcintf)}</td></tr>
+                <tr><th>Destination Interfaces</th><td>${formatInterface(policy.dstintf)}</td></tr>
+                <tr><th>Source IPv6 Addresses</th><td>${formatAddresses(policy.srcaddr6)}</td></tr>
+                <tr><th>Destination IPv6 Addresses</th><td>${formatAddresses(policy.dstaddr6)}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Service & Schedule
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Service & Schedule
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Services</th><td>${formatAddresses(policy.service)}</td></tr>
+                <tr><th>Service Negate</th><td>${formatValue(policy['service-negate'])}</td></tr>
+                <tr><th>Schedule</th><td>${escapeHtml(policy.schedule || 'N/A')}</td></tr>
+                <tr><th>Schedule Timeout</th><td>${formatValue(policy['schedule-timeout'])}</td></tr>
+                <tr><th>Session TTL</th><td>${policy['session-ttl'] || '0'} seconds</td></tr>
+                <tr><th>Users</th><td>${formatAddresses(policy.users)}</td></tr>
+                <tr><th>Groups</th><td>${formatAddresses(policy.groups)}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: NAT Settings
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                NAT Settings
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">NAT</th><td>${formatValue(policy.nat)}</td></tr>
+                <tr><th>NAT46</th><td>${formatValue(policy.nat46)}</td></tr>
+                <tr><th>NAT64</th><td>${formatValue(policy.nat64)}</td></tr>
+                <tr><th>NAT Inbound</th><td>${formatValue(policy.natinbound)}</td></tr>
+                <tr><th>NAT Outbound</th><td>${formatValue(policy.natoutbound)}</td></tr>
+                <tr><th>NAT IP</th><td><code>${escapeHtml(policy.natip || 'N/A')}</code></td></tr>
+                <tr><th>IP Pool</th><td>${formatValue(policy.ippool)}</td></tr>
+                <tr><th>Pool Name</th><td>${formatAddresses(policy.poolname)}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Security Profiles (UTM)
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Security Profiles (UTM)
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">UTM Status</th><td>${formatValue(policy['utm-status'])}</td></tr>
+                <tr><th>Profile Type</th><td>${escapeHtml(policy['profile-type'] || 'N/A')}</td></tr>
+                <tr><th>Profile Group</th><td>${escapeHtml(policy['profile-group'] || '') || '<span class="text-muted">Single profiles below</span>'}</td></tr>
+                <tr><th>AV Profile</th><td>${escapeHtml(policy['av-profile'] || 'N/A')}</td></tr>
+                <tr><th>IPS Sensor</th><td>${escapeHtml(policy['ips-sensor'] || 'N/A')}</td></tr>
+                <tr><th>Web Filter Profile</th><td>${escapeHtml(policy['webfilter-profile'] || 'N/A')}</td></tr>
+                <tr><th>DNS Filter Profile</th><td>${escapeHtml(policy['dnsfilter-profile'] || 'N/A')}</td></tr>
+                <tr><th>Application List</th><td>${escapeHtml(policy['application-list'] || 'N/A')}</td></tr>
+                <tr><th>DLP Profile</th><td>${escapeHtml(policy['dlp-profile'] || 'N/A')}</td></tr>
+                <tr><th>SSL/SSH Profile</th><td>${escapeHtml(policy['ssl-ssh-profile'] || 'N/A')}</td></tr>
+                <tr><th>SSH Filter Profile</th><td>${escapeHtml(policy['ssh-filter-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>Video Filter Profile</th><td>${escapeHtml(policy['videofilter-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>CASB Profile</th><td>${escapeHtml(policy['casb-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>WAF Profile</th><td>${escapeHtml(policy['waf-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>ICAP Profile</th><td>${escapeHtml(policy['icap-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>CIFS Profile</th><td>${escapeHtml(policy['cifs-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>Virtual Patch Profile</th><td>${escapeHtml(policy['virtual-patch-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>File Filter Profile</th><td>${escapeHtml(policy['file-filter-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>Email Filter Profile</th><td>${escapeHtml(policy['emailfilter-profile'] || '') || 'N/A'}</td></tr>
+                <tr><th>VoIP Profile</th><td>${escapeHtml(policy['voip-profile'] || '') || 'N/A'}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Logging & Monitoring
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Logging & Monitoring
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Log Traffic</th><td>${escapeHtml(policy.logtraffic || 'N/A')}</td></tr>
+                <tr><th>Log Traffic Start</th><td>${formatValue(policy['logtraffic-start'])}</td></tr>
+                <tr><th>Capture Packet</th><td>${formatValue(policy['capture-packet'])}</td></tr>
+                <tr><th>Custom Log Fields</th><td>${formatAddresses(policy['custom-log-fields'])}</td></tr>
+                <tr><th>Block Notification</th><td>${formatValue(policy['block-notification'])}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Traffic Shaping
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Traffic Shaping
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Traffic Shaper</th><td>${escapeHtml(policy['traffic-shaper'] || '') || '<span class="text-muted">None</span>'}</td></tr>
+                <tr><th>Traffic Shaper Reverse</th><td>${escapeHtml(policy['traffic-shaper-reverse'] || '') || '<span class="text-muted">None</span>'}</td></tr>
+                <tr><th>Per-IP Shaper</th><td>${escapeHtml(policy['per-ip-shaper'] || '') || '<span class="text-muted">None</span>'}</td></tr>
+                <tr><th>Dynamic Shaping</th><td>${formatValue(policy['dynamic-shaping'])}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Advanced Settings
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Advanced Settings
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Inspection Mode</th><td>${escapeHtml(policy['inspection-mode'] || 'N/A')}</td></tr>
+                <tr><th>Profile Protocol Options</th><td>${escapeHtml(policy['profile-protocol-options'] || 'N/A')}</td></tr>
+                <tr><th>IP Version</th><td>${escapeHtml(policy['ip-version-type'] || 'N/A')}</td></tr>
+                <tr><th>Anti-Replay</th><td>${formatValue(policy['anti-replay'])}</td></tr>
+                <tr><th>TCP Session Without SYN</th><td>${formatValue(policy['tcp-session-without-syn'])}</td></tr>
+                <tr><th>TCP MSS Sender</th><td>${policy['tcp-mss-sender'] || '0'}</td></tr>
+                <tr><th>TCP MSS Receiver</th><td>${policy['tcp-mss-receiver'] || '0'}</td></tr>
+                <tr><th>Auto ASIC Offload</th><td>${formatValue(policy['auto-asic-offload'])}</td></tr>
+                <tr><th>Inbound</th><td>${formatValue(policy.inbound)}</td></tr>
+                <tr><th>Outbound</th><td>${formatValue(policy.outbound)}</td></tr>
+                <tr><th>Fixed Port</th><td>${formatValue(policy.fixedport)}</td></tr>
+                <tr><th>Disclaim</th><td>${formatValue(policy.disclaimer)}</td></tr>
+                <tr><th>Match VIP</th><td>${formatValue(policy['match-vip'])}</td></tr>
+                <tr><th>Match VIP Only</th><td>${formatValue(policy['match-vip-only'])}</td></tr>
+                <tr><th>Reputation Direction</th><td>${escapeHtml(policy['reputation-direction'] || 'N/A')}</td></tr>
+                <tr><th>Reputation Minimum</th><td>${policy['reputation-minimum'] || '0'}</td></tr>
+                <tr><th>Policy Behaviour Type</th><td>${escapeHtml(policy['policy-behaviour-type'] || 'N/A')}</td></tr>
+                <tr><th>Policy Expiry</th><td>${formatValue(policy['policy-expiry'])}</td></tr>
+                <tr><th>Policy Expiry Date</th><td>${escapeHtml(policy['policy-expiry-date-utc'] || '') || '<span class="text-muted">N/A</span>'}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: Internet Service
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                Internet Service
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">Internet Service</th><td>${formatValue(policy['internet-service'])}</td></tr>
+                <tr><th>Internet Service Negate</th><td>${formatValue(policy['internet-service-negate'])}</td></tr>
+                <tr><th>Internet Service Source</th><td>${formatValue(policy['internet-service-src'])}</td></tr>
+                <tr><th>Internet Service Source Negate</th><td>${formatValue(policy['internet-service-src-negate'])}</td></tr>
+                <tr><th>Internet Service Name</th><td>${formatAddresses(policy['internet-service-name'])}</td></tr>
+                <tr><th>Internet Service Group</th><td>${formatAddresses(policy['internet-service-group'])}</td></tr>
+                <tr><th>Internet Service Custom</th><td>${formatAddresses(policy['internet-service-custom'])}</td></tr>
+            </table>
+        </div>`;
+
+        // Section: ZTNA
+        html += `
+        <div class="mb-4">
+            <h6 class="text-primary border-bottom pb-2 mb-3">
+                ZTNA (Zero Trust)
+            </h6>
+            <table class="table table-sm">
+                <tr><th style="width:180px;">ZTNA Status</th><td>${formatValue(policy['ztna-status'])}</td></tr>
+                <tr><th>ZTNA Device Ownership</th><td>${formatValue(policy['ztna-device-ownership'])}</td></tr>
+                <tr><th>ZTNA Policy Redirect</th><td>${formatValue(policy['ztna-policy-redirect'])}</td></tr>
+                <tr><th>ZTNA Tags Match Logic</th><td>${escapeHtml(policy['ztna-tags-match-logic'] || 'N/A')}</td></tr>
+                <tr><th>ZTNA EMS Tag</th><td>${formatAddresses(policy['ztna-ems-tag'])}</td></tr>
+                <tr><th>ZTNA Geo Tag</th><td>${formatAddresses(policy['ztna-geo-tag'])}</td></tr>
+            </table>
+        </div>`;
+
+        body.innerHTML = html;
     }
 
     function escapeHtml(text) {
@@ -502,6 +797,7 @@
                     resultsEmpty.querySelector('p').textContent = data.message || 'An error occurred.';
                     return;
                 }
+                currentDeviceId = data.device_id;
                 renderPolicies(data.data, data.device_id);
                 resultsCount.textContent = data.pagination.total + ' policies found';
                 updatePagination(data.pagination.total, data.pagination.limit, data.pagination.offset);

@@ -559,6 +559,45 @@ def policy_catalog_results():
     })
 
 
+@client_bp.route("/policies/<int:policy_id>", methods=["GET"])
+@login_required
+def policy_detail(policy_id):
+    """Return full policy details as JSON for the detail modal."""
+    from services.policy_search import PolicySearchService
+
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+
+    if not device_id:
+        return jsonify({"error": "device_required", "message": "Please select a device."}), 400
+
+    if not has_device_access(current_user.id, device_id):
+        return jsonify({"error": "access_denied", "message": "You do not have access to this device."}), 403
+
+    device = next((d for d in devices if d.id == device_id), None)
+    if device is None:
+        return jsonify({"error": "device_not_found", "message": "Device not found."}), 404
+
+    try:
+        data_root = str(resolve_device_data_root(device))
+        svc = PolicySearchService(data_root)
+    except Exception as e:
+        logger.warning(
+            "Policy search service unavailable",
+            extra={"device_id": device_id, "error": str(e)},
+        )
+        return jsonify({
+            "error": "data_unavailable",
+            "message": f"No policy snapshot available for '{device.name}'.",
+        }), 200
+
+    policy = svc.get_policy_by_id(policy_id)
+    if policy is None:
+        return jsonify({"error": "policy_not_found", "message": "Policy not found."}), 404
+
+    return jsonify({"data": policy, "device_id": device_id, "device_name": device.name})
+
+
 # =============================================================================
 # Risk Assessment Service (score and rank policies by security risk)
 # =============================================================================

@@ -39,6 +39,7 @@ class PolicySearchService:
     def __init__(self, data_root: str):
         self.data_root = data_root
         self._policies: list[dict[str, Any]] = []
+        self._raw_policies: list[dict[str, Any]] = []
         self._snapshot_id: str | None = None
         self._all_addresses: list[str] = []
         self._all_services: list[str] = []
@@ -48,7 +49,8 @@ class PolicySearchService:
         """Load and normalize policies from the active snapshot."""
         location, dataset, manifest = load_snapshot_dataset(self.data_root)
         self._snapshot_id = location.snapshot_id
-        self._policies = self._normalize_policies(dataset.get("policies.json", []))
+        self._raw_policies = dataset.get("policies.json", [])
+        self._policies = self._normalize_policies(self._raw_policies)
         self._build_catalogs()
 
     @staticmethod
@@ -168,6 +170,13 @@ class PolicySearchService:
             has_more=has_more,
             filters_applied=filters_applied,
         )
+
+    def get_policy_by_id(self, policy_id: int) -> dict[str, Any] | None:
+        """Return the full raw policy data for a specific policy ID."""
+        for policy in self._raw_policies:
+            if policy.get("policyid") == policy_id:
+                return policy
+        return None
 
     def _build_catalogs(self) -> None:
         """Build sorted unique lists of all addresses and services across policies."""
