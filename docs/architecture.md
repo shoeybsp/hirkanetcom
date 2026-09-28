@@ -153,20 +153,32 @@ collected and independently assigned to clients.
   loads a device's snapshot via `engine/snapshot_store.py::load_snapshot_dataset`,
   normalizes policy data, and provides filtering/sorting/pagination. Also
   exposes `get_filter_options()` to supply unique address and service names
-  for autocomplete dropdowns.
+  for autocomplete dropdowns, and `get_policy_by_id()` to retrieve the full
+  raw policy data for the detail modal view.
 - **Client routes** (`client/routes.py`):
   - `GET /client/policies` — server-rendered policy catalog page with
     device selector, filter form, and results table.
   - `GET|POST /client/policies/results` — JSON endpoint returning filtered
     policies with pagination. Used by the catalog page's JavaScript.
+  - `GET /client/policies/<policy_id>` — JSON endpoint returning the full
+    raw policy data for a single policy. Used by the detail modal to display
+    all 100+ FortiGate configuration fields organized into logical sections
+    (General, Source/Destination, Service/Schedule, NAT, Security Profiles,
+    Logging, Traffic Shaping, Advanced Settings, Internet Service, ZTNA).
 - **Validation:** `validation/policies.py` — validates query parameters
   (action, status, limit, offset, sort_by, sort_order).
 - **Filter options:** Address and service lists are extracted from the
   snapshot on page load and passed to the template for searchable dropdown
   autocomplete. The dropdowns filter client-side as the user types.
+- **Policy detail modal:** The catalog page includes a Bootstrap modal that
+  fetches the full policy data from the `/client/policies/<policy_id>`
+  endpoint asynchronously and renders all configuration fields in organized
+  sections. This provides visibility into security profiles, NAT settings,
+  traffic shaping, ZTNA configuration, and other FortiGate-specific fields
+  that are not shown in the main results table.
 - **Authorization:** Same `client/access.py` helpers as Policy Evaluation.
-  Device access is enforced at both the catalog page route and the JSON
-  results endpoint.
+  Device access is enforced at the catalog page route, the JSON results
+  endpoint, and the policy detail endpoint.
 
 ---
 ## 4c. Policy Risk Assessment Service
@@ -395,7 +407,8 @@ Concrete, verified items - not speculative "future work":
 
 ---
 *Rewritten to reflect the multi-device inventory, per-device sync,
-per-device evaluation work, the Policy Search/Catalog service, and the
+per-device evaluation work, the Policy Search/Catalog service (including
+the policy detail modal for viewing full FortiGate configuration), and the
 Policy Risk Assessment service, and to replace prior claims that could not
 be verified against the current codebase with claims that were - the test
 counts, the SQLite pragma fix, the container UID pin, the PyYAML gap, and
