@@ -69,9 +69,28 @@ def load_user(user_id):
     except (TypeError, ValueError): return None
 
 from admin.routes import admin_bp
-from client.routes import client_bp
+from client.routes import client_bp, get_subscribed_services
 from main.routes import main_bp
 app.register_blueprint(admin_bp); app.register_blueprint(client_bp); app.register_blueprint(main_bp)
+
+
+@app.context_processor
+def inject_service_subscriptions():
+    """Expose the signed-in user's subscribed service types to templates.
+
+    The client sidebar hides nav entries for services the account isn't
+    subscribed to. Computing this per request keeps the sidebar and the
+    @subscription_required route guards in agreement; an unsubscribed
+    user clicking a stale link still gets a 403 from the route.
+    """
+    if not current_user.is_authenticated:
+        return {"subscribed_services": frozenset()}
+    return {
+        "subscribed_services": frozenset(
+            service.service_type
+            for service in get_subscribed_services()
+        )
+    }
 
 
 @app.errorhandler(DatabaseTransactionError)

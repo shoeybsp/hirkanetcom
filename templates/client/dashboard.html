@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <title>My Dashboard - SecureTrack-Lite</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
 </head>
@@ -33,6 +34,12 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 <span>Risk Assessment</span>
             </a>
+            {% if 'dos_policy' in subscribed_services %}
+            <a href="{{ url_for('client.dos_policies') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>DoS Policies</span>
+            </a>
+            {% endif %}
         </nav>
 
         <div class="hk-sidebar-footer">
@@ -57,7 +64,7 @@
             </button>
             <div class="hk-header-left">
                 <h1 class="hk-page-title">My Dashboard</h1>
-                <p class="hk-page-subtitle">Review your available services and open the policy evaluation workspace when access is enabled.</p>
+                <p class="hk-page-subtitle">Pin the services you use most to your home page. Use Customize to add, remove, or reorder cards.</p>
             </div>
         </header>
 
@@ -73,61 +80,71 @@
             {% endif %}
             {% endwith %}
 
-            <div class="row g-3">
-                {% if services %}
-                {% for svc in services %}
-                <div class="col-md-6">
-                    {% if svc.service_type == 'policy_evaluation' %}
-                    <a href="{{ url_for('client.policy_evaluation') }}" class="hk-mgmt-card">
-                        <div class="hk-mgmt-card-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        </div>
-                        <h2 class="hk-mgmt-card-title">{{ svc.name }}</h2>
-                        <p class="hk-mgmt-card-desc">{{ svc.description or 'Evaluate FortiGate firewall policies for new access requests.' }}</p>
-                        <span class="hk-mgmt-card-arrow">
-                            Open Service
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                        </span>
-                    </a>
-                    {% elif svc.service_type == 'policy_risk_assessment' %}
-                    <a href="{{ url_for('client.risk_assessment') }}" class="hk-mgmt-card">
-                        <div class="hk-mgmt-card-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        </div>
-                        <h2 class="hk-mgmt-card-title">{{ svc.name }}</h2>
-                        <p class="hk-mgmt-card-desc">{{ svc.description or 'Score and rank firewall policies by security risk with remediation guidance.' }}</p>
-                        <span class="hk-mgmt-card-arrow">
-                            Open Assessment
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                        </span>
-                    </a>
-                    {% else %}
-                    <div class="hk-mgmt-card" style="opacity:0.6;">
-                        <div class="hk-mgmt-card-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        </div>
-                        <h2 class="hk-mgmt-card-title">{{ svc.name }}</h2>
-                        <p class="hk-mgmt-card-desc">{{ svc.description or 'No description available.' }}</p>
-                        <span class="hk-mgmt-card-arrow" style="color:var(--stl-muted);">Coming Soon</span>
+            {% macro widget_card(w) %}
+                {% if w.endpoint %}
+                <a href="{{ url_for(w.endpoint) }}" class="hk-mgmt-card hk-widget-card">
+                {% else %}
+                <div class="hk-mgmt-card hk-widget-card" style="opacity:0.6;">
+                {% endif %}
+                    <div class="hk-mgmt-card-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ w.icon|safe }}</svg>
                     </div>
+                    <h2 class="hk-mgmt-card-title">{{ w.title }}</h2>
+                    <p class="hk-mgmt-card-desc">{{ w.description }}</p>
+                    {% if w.endpoint %}
+                    <span class="hk-mgmt-card-arrow">
+                        {{ w.cta }}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </span>
+                    {% else %}
+                    <span class="hk-mgmt-card-arrow" style="color:var(--stl-muted);">{{ w.cta }}</span>
                     {% endif %}
+                {% if w.endpoint %}</a>{% else %}</div>{% endif %}
+            {% endmacro %}
+
+            <!-- Widget toolbar -->
+            <div class="hk-widget-toolbar">
+                <p class="hk-widget-hint" id="widgetHint" hidden>
+                    Drag cards (or use the arrows) to reorder. Remove cards you don't need and add them back below.
+                </p>
+                <div class="hk-widget-actions">
+                    <button type="button" class="btn btn-outline-info btn-sm" id="btnCustomize">Customize</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnResetLayout" hidden>Reset to default</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnDoneCustomize" hidden>Done</button>
+                </div>
+            </div>
+
+            <!-- Hidden widgets the user can add back (edit mode only) -->
+            <div class="hk-widget-tray" id="widgetTray" hidden>
+                <span class="hk-widget-tray-label">Add a card:</span>
+                {% for w in shown_widgets + hidden_widgets %}
+                <button type="button" class="hk-widget-chip{% if w in shown_widgets %} d-none{% endif %}" data-add="{{ w.key }}">+ {{ w.title }}</button>
+                {% endfor %}
+                <span class="hk-widget-tray-empty" id="widgetTrayEmpty">All available cards are on your dashboard.</span>
+            </div>
+
+            <div class="row g-3" id="widgetGrid"
+                 data-layout-url="{{ url_for('client.dashboard_layout') }}">
+                {% for w in shown_widgets + hidden_widgets %}
+                <div class="col-md-6 hk-widget{% if w not in shown_widgets %} d-none{% endif %}" data-key="{{ w.key }}">
+                    <div class="hk-widget-controls" hidden>
+                        <button type="button" class="hk-widget-btn" data-move="-1" aria-label="Move {{ w.title }} earlier" title="Move earlier">&#8592;</button>
+                        <button type="button" class="hk-widget-btn" data-move="1" aria-label="Move {{ w.title }} later" title="Move later">&#8594;</button>
+                        <button type="button" class="hk-widget-btn hk-widget-remove" data-remove aria-label="Remove {{ w.title }} from dashboard" title="Remove from dashboard">&times;</button>
+                    </div>
+                    {{ widget_card(w) }}
                 </div>
                 {% endfor %}
-                {% endif %}
 
-                <!-- Policy Catalog Card -->
-                <div class="col-md-6">
-                    <a href="{{ url_for('client.policy_catalog') }}" class="hk-mgmt-card">
-                        <div class="hk-mgmt-card-icon">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <div class="col-12 d-none" id="widgetEmpty">
+                    <div class="hk-mgmt-card text-center" style="border:none;">
+                        <div class="card-body py-5 stl-empty-state">
+                            <h3 class="mb-3" style="color: #f8fbff;">Your dashboard is empty</h3>
+                            <p style="color: var(--stl-muted); max-width: 540px; margin: 0 auto;">
+                                Click Customize, then pick a card to add.
+                            </p>
                         </div>
-                        <h2 class="hk-mgmt-card-title">Policy Catalog</h2>
-                        <p class="hk-mgmt-card-desc">Browse, search, and filter collected firewall policies across your assigned devices.</p>
-                        <span class="hk-mgmt-card-arrow">
-                            Open Catalog
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                        </span>
-                    </a>
+                    </div>
                 </div>
 
                 {% if not services %}
@@ -161,6 +178,136 @@
             sidebar.classList.toggle('hk-sidebar-collapsed');
         });
     }
+})();
+</script>
+<script>
+(function() {
+    var grid = document.getElementById('widgetGrid');
+    if (!grid) return;
+    var tray = document.getElementById('widgetTray');
+    var hint = document.getElementById('widgetHint');
+    var btnCustomize = document.getElementById('btnCustomize');
+    var btnDone = document.getElementById('btnDoneCustomize');
+    var btnReset = document.getElementById('btnResetLayout');
+    var emptyState = document.getElementById('widgetEmpty');
+    var trayEmpty = document.getElementById('widgetTrayEmpty');
+    var csrf = document.querySelector('meta[name="csrf-token"]').content;
+    var layoutUrl = grid.dataset.layoutUrl;
+    var editing = false;
+    var dragged = null;
+
+    function widgets() { return Array.prototype.slice.call(grid.querySelectorAll('.hk-widget')); }
+    function visible() { return widgets().filter(function(w) { return !w.classList.contains('d-none'); }); }
+    function chipFor(key) { return tray.querySelector('[data-add="' + key + '"]'); }
+
+    function refresh() {
+        var vis = visible();
+        emptyState.classList.toggle('d-none', vis.length > 0 || editing);
+        var anyChip = Array.prototype.some.call(tray.querySelectorAll('.hk-widget-chip'), function(c) { return !c.classList.contains('d-none'); });
+        trayEmpty.classList.toggle('d-none', anyChip);
+    }
+
+    function post(body) {
+        return fetch(layoutUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            body: JSON.stringify(body)
+        }).then(function(resp) {
+            if (!resp.ok) throw new Error('save failed');
+            return resp.json();
+        });
+    }
+
+    function save() {
+        post({layout: visible().map(function(w) { return w.dataset.key; })})
+            .catch(function() {
+                alert('Could not save your dashboard layout. The page will reload.');
+                window.location.reload();
+            });
+    }
+
+    function setEditing(on) {
+        editing = on;
+        document.body.classList.toggle('hk-widgets-editing', on);
+        tray.hidden = !on;
+        hint.hidden = !on;
+        btnDone.hidden = !on;
+        btnReset.hidden = !on;
+        btnCustomize.hidden = on;
+        widgets().forEach(function(w) {
+            w.querySelector('.hk-widget-controls').hidden = !on;
+            w.draggable = on;
+        });
+        refresh();
+    }
+
+    btnCustomize.addEventListener('click', function() { setEditing(true); });
+    btnDone.addEventListener('click', function() { setEditing(false); });
+    btnReset.addEventListener('click', function() {
+        if (!confirm('Restore the default dashboard with all available cards?')) return;
+        post({reset: true}).then(function() { window.location.reload(); })
+            .catch(function() { alert('Could not reset your dashboard.'); });
+    });
+
+    // Remove / reorder buttons
+    grid.addEventListener('click', function(ev) {
+        var widget = ev.target.closest('.hk-widget');
+        if (!widget) return;
+        if (editing && ev.target.closest('a.hk-widget-card')) ev.preventDefault();
+        if (ev.target.closest('[data-remove]')) {
+            widget.classList.add('d-none');
+            chipFor(widget.dataset.key).classList.remove('d-none');
+            refresh(); save();
+        }
+        var mover = ev.target.closest('[data-move]');
+        if (mover) {
+            var vis = visible(), idx = vis.indexOf(widget), dir = parseInt(mover.dataset.move, 10);
+            var swap = vis[idx + dir];
+            if (!swap) return;
+            if (dir < 0) grid.insertBefore(widget, swap); else grid.insertBefore(swap, widget);
+            save();
+        }
+    });
+
+    // Add back from the tray
+    tray.addEventListener('click', function(ev) {
+        var chip = ev.target.closest('[data-add]');
+        if (!chip) return;
+        var widget = grid.querySelector('.hk-widget[data-key="' + chip.dataset.add + '"]');
+        widget.classList.remove('d-none');
+        grid.insertBefore(widget, emptyState);
+        chip.classList.add('d-none');
+        refresh(); save();
+    });
+
+    // Drag and drop reorder (desktop); arrow buttons cover touch and keyboard
+    grid.addEventListener('dragstart', function(ev) {
+        var widget = ev.target.closest && ev.target.closest('.hk-widget');
+        if (!editing || !widget) return;
+        dragged = widget;
+        widget.classList.add('hk-widget-dragging');
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('text/plain', widget.dataset.key);
+    });
+    grid.addEventListener('dragover', function(ev) {
+        if (!editing || !dragged) return;
+        var over = ev.target.closest('.hk-widget');
+        if (!over || over === dragged || over.classList.contains('d-none')) return;
+        ev.preventDefault();
+        var box = over.getBoundingClientRect();
+        var after = (ev.clientY - box.top) > box.height / 2 && (ev.clientX - box.left) > box.width / 2
+            || (ev.clientY - box.top) > box.height * 0.75;
+        grid.insertBefore(dragged, after ? over.nextSibling : over);
+    });
+    grid.addEventListener('dragend', function() {
+        if (!dragged) return;
+        dragged.classList.remove('hk-widget-dragging');
+        dragged = null;
+        save();
+    });
+
+    refresh();
 })();
 </script>
 </body>

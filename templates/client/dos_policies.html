@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>DoS Policy Management - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <style>
+        .risk-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; text-transform:uppercase; }
+        .risk-critical { background:#dc3545; color:#fff; }
+        .risk-high { background:#fd7e14; color:#fff; }
+        .risk-medium { background:#ffc107; color:#212529; }
+        .risk-low { background:#198754; color:#fff; }
+        .risk-info { background:#6c757d; color:#fff; }
+        .audit-score { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+        .audit-score-bar { display:inline-block; height:6px; border-radius:3px; vertical-align:middle; }
+        .status-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; text-transform:uppercase; }
+        .status-enable { background:#198754; color:#fff; }
+        .status-disable { background:#6c757d; color:#fff; }
+        .anomaly-tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:0.7rem; margin:1px; }
+        .anomaly-enabled { background:rgba(25,135,84,0.2); color:#198754; border:1px solid rgba(25,135,84,0.3); }
+        .anomaly-disabled { background:rgba(108,117,125,0.2); color:#6c757d; border:1px solid rgba(108,117,125,0.3); }
+        .factor-card { background:var(--stl-card-bg, #1a1f2e); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; margin-bottom:8px; }
+        .factor-card h6 { margin:0 0 6px; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--stl-muted, #8892a4); }
+        .finding-item { font-size:0.85rem; color:var(--stl-text, #e0e6ed); margin:3px 0; padding-left:12px; position:relative; }
+        .finding-item::before { content:""; position:absolute; left:0; top:7px; width:4px; height:4px; border-radius:50%; background:var(--stl-muted, #8892a4); }
+        .remediation-item { font-size:0.85rem; color:#20c997; margin:3px 0; padding-left:12px; position:relative; }
+        .remediation-item::before { content:""; position:absolute; left:0; top:7px; width:4px; height:4px; border-radius:50%; background:#20c997; }
+        .summary-card { background:var(--stl-card-bg, #1a1f2e); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:16px; text-align:center; }
+        .summary-card .value { font-size:2rem; font-weight:700; color:var(--stl-text, #e5eefc); }
+        .summary-card .value.tone-critical { color:#ef5e5e; }
+        .summary-card .value.tone-high { color:#fd7e14; }
+        .summary-card .value.tone-medium { color:#ffc107; }
+        .summary-card .value.tone-low { color:#2fbf71; }
+        .summary-card .value.tone-info { color:#8ea0b8; }
+        .summary-card .label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--stl-muted, #8892a4); margin-top:4px; }
+        .action-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+        .loading-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center; }
+        .loading-overlay.active { display:flex; }
+        .loading-spinner { color:#fff; font-size:1.1rem; }
+    </style>
+</head>
+<body class="hk-admin-body">
+
+<div class="hk-admin-layout">
+    <aside class="hk-sidebar" id="hkSidebar">
+        <div class="hk-sidebar-brand">
+            <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                <span class="hk-sidebar-brand-text">SecureTrack-Lite</span>
+            </a>
+        </div>
+
+        <nav class="hk-sidebar-nav">
+            <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="{{ url_for('client.policy_evaluation') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Policy Evaluation</span>
+            </a>
+            <a href="{{ url_for('client.policy_catalog') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span>Policy Catalog</span>
+            </a>
+            <a href="{{ url_for('client.risk_assessment') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Risk Assessment</span>
+            </a>
+            {% if 'dos_policy' in subscribed_services %}
+            <a href="{{ url_for('client.dos_policies') }}" class="hk-sidebar-link {% if request.endpoint in ('client.dos_policies', 'client.dos_policy_detail') %}active{% endif %}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>DoS Policies</span>
+            </a>
+            {% endif %}
+        </nav>
+
+        <div class="hk-sidebar-footer">
+            <div class="hk-sidebar-user">
+                <span class="hk-sidebar-role-badge">{{ current_user.role }}</span>
+                <span class="hk-sidebar-username">{{ current_user.username }}</span>
+            </div>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="hk-sidebar-link hk-sidebar-logout">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Sign Out</span>
+                </button>
+            </form>
+        </div>
+    </aside>
+
+    <main class="hk-main">
+        <header class="hk-main-header">
+            <button class="hk-sidebar-toggle" id="hkSidebarToggle" aria-label="Toggle sidebar">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div class="hk-header-left">
+                <h1 class="hk-page-title">DoS Policy Management</h1>
+                <p class="hk-page-subtitle">View and audit FortiGate DoS policies in real-time.</p>
+            </div>
+        </header>
+
+        <div class="hk-main-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            {% if devices and not device_error %}
+            <!-- Device Selector + Actions -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                    <label for="deviceSelect" class="form-label mb-0 me-2" style="color:var(--stl-muted); font-size:0.85rem;">Device:</label>
+                    <select id="deviceSelect" class="form-select form-select-sm d-inline-block" style="width:auto; min-width:200px;"
+                            onchange="window.location.href='{{ url_for('client.dos_policies') }}?device_id='+encodeURIComponent(this.value);">
+                        {% for device in devices %}
+                        <option value="{{ device.id }}" {% if selected_device and device.id == selected_device.id %}selected{% endif %}>{{ device.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="action-bar">
+                    <button type="button" class="btn btn-outline-warning btn-sm" id="btnRunAudit" onclick="runAudit()">
+                        Run Audit
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card hk-card mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label for="filterName" class="form-label mb-0" style="font-size:0.8rem; color:var(--stl-muted);">Name</label>
+                            <input type="text" id="filterName" class="form-control form-control-sm" placeholder="Search by name...">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="filterStatus" class="form-label mb-0" style="font-size:0.8rem; color:var(--stl-muted);">Status</label>
+                            <select id="filterStatus" class="form-select form-select-sm">
+                                <option value="">All</option>
+                                <option value="enable">Enabled</option>
+                                <option value="disable">Disabled</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadPolicies()">Apply Filters</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearFilters()">Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Policy Table -->
+            <div class="card hk-card">
+                <div class="card-body p-0">
+                    <div id="loadingIndicator" class="text-center py-4" style="display:none;">
+                        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <p class="mt-2" style="color:var(--stl-muted);">Connecting to device...</p>
+                    </div>
+                    <div id="errorContainer" class="text-center py-4" style="display:none;">
+                        <p style="color:#dc3545;" id="errorMessage"></p>
+                    </div>
+                    <table class="table table-hover mb-0" id="policyTable" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th style="cursor:pointer" onclick="sortTable('id')">ID <span id="sort-id" class="text-muted"></span></th>
+                                <th style="cursor:pointer" onclick="sortTable('name')">Name <span id="sort-name" class="text-muted"></span></th>
+                                <th>Status</th>
+                                <th>Source</th>
+                                <th>Destination</th>
+                                <th>Anomalies</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="policyTableBody">
+                        </tbody>
+                    </table>
+                    <div id="emptyState" class="text-center py-4" style="display:none;">
+                        <p style="color:var(--stl-muted);">No DoS policies found on this device.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pagination -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <span id="paginationInfo" style="color:var(--stl-muted); font-size:0.85rem;"></span>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnPrev" onclick="prevPage()" disabled>Previous</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnNext" onclick="nextPage()" disabled>Next</button>
+                </div>
+            </div>
+
+            <!-- Audit Summary (shown after audit) -->
+            <div id="auditSummary" style="display:none;" class="mt-4">
+                <h5 style="color:var(--stl-text); margin-bottom:12px;">Audit Summary</h5>
+                <div class="row g-3 mb-3" id="auditSummaryCards"></div>
+                <div class="card hk-card">
+                    <div class="card-body p-0">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Audit Score</th>
+                                    <th>Risk Level</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {% else %}
+            <div class="col-12">
+                <div class="hk-mgmt-card text-center" style="border:none;">
+                    <div class="card-body py-5 stl-empty-state">
+                        {% if device_error %}
+                        <h3 class="mb-3" style="color: #f8fbff;">Select a Device</h3>
+                        <p style="color: var(--stl-muted); max-width: 540px; margin: 0 auto;">{{ device_error }}</p>
+                        {% else %}
+                        <h3 class="mb-3" style="color: #f8fbff;">No Devices Available</h3>
+                        <p style="color: var(--stl-muted); max-width: 540px; margin: 0 auto;">
+                            No devices are assigned to your account. Please contact your administrator.
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <footer class="hk-main-footer">
+            <span>SecureTrack-Lite &middot; Client Portal</span>
+        </footer>
+    </main>
+</div>
+
+<!-- Policy Detail Modal -->
+<div class="modal fade" id="policyDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background:var(--stl-card-bg, #1a1f2e); color:var(--stl-text, #e0e6ed); border:1px solid rgba(255,255,255,0.1);">
+            <div class="modal-header" style="border-bottom:1px solid rgba(255,255,255,0.08);">
+                <h5 class="modal-title" id="modalPolicyName">Policy Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalPolicyBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid rgba(255,255,255,0.08);">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Audit Detail Modal -->
+<div class="modal fade" id="auditDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" style="background:var(--stl-card-bg, #1a1f2e); color:var(--stl-text, #e0e6ed); border:1px solid rgba(255,255,255,0.1);">
+            <div class="modal-header" style="border-bottom:1px solid rgba(255,255,255,0.08);">
+                <h5 class="modal-title" id="modalAuditName">Audit Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalAuditBody">
+            </div>
+            <div class="modal-footer" style="border-top:1px solid rgba(255,255,255,0.08);">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner">
+        <div class="spinner-border text-light" role="status"></div>
+        <span class="ms-2">Processing...</span>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function() {
+    var sidebar = document.getElementById('hkSidebar');
+    var toggle = document.getElementById('hkSidebarToggle');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function() {
+            sidebar.classList.toggle('hk-sidebar-collapsed');
+        });
+    }
+})();
+
+// State
+var currentPage = 0;
+var pageLimit = 100;
+var currentSort = { field: 'id', order: 'asc' };
+var currentPolicies = [];
+var selectedDeviceId = {{ selected_device.id if selected_device else 'null' }};
+
+// Build the per-policy URLs from one base so the blueprint prefix is
+// never hardcoded: url_for(..., policy_id=0) then drop the placeholder.
+var POLICY_BASE = {{ url_for('client.dos_policy_detail', policy_id=0)|tojson }}.replace(/\/0$/, '/');
+var AUDIT_URL = {{ url_for('client.dos_policies_audit')|tojson }};
+var RESULTS_URL = {{ url_for('client.dos_policies_results')|tojson }};
+
+function getDeviceId() { return selectedDeviceId; }
+
+// Parse a response as JSON, surfacing the server's own error message
+// instead of a generic "could not connect" when the request failed.
+function readJson(r) {
+    if (r.ok) return r.json();
+    return r.text().then(function(text) {
+        var msg = 'Request failed (HTTP ' + r.status + ')';
+        try {
+            var j = JSON.parse(text);
+            msg = j.message || (j.details && JSON.stringify(j.details)) || j.error || msg;
+        } catch (e) {}
+        throw new Error(msg);
+    });
+}
+
+function loadPolicies() {
+    var name = document.getElementById('filterName').value;
+    var status = document.getElementById('filterStatus').value;
+    var params = new URLSearchParams({
+        device_id: getDeviceId(),
+        limit: pageLimit,
+        offset: currentPage * pageLimit,
+        sort_by: currentSort.field,
+        sort_order: currentSort.order
+    });
+    if (name) params.set('name', name);
+    if (status) params.set('status', status);
+
+    document.getElementById('loadingIndicator').style.display = 'block';
+    document.getElementById('errorContainer').style.display = 'none';
+    document.getElementById('policyTable').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+
+    fetch(RESULTS_URL + '?' + params.toString())
+        .then(readJson)
+        .then(function(resp) {
+            document.getElementById('loadingIndicator').style.display = 'none';
+            if (resp.error) {
+                document.getElementById('errorContainer').style.display = 'block';
+                document.getElementById('errorMessage').textContent = resp.message || 'An error occurred.';
+                return;
+            }
+            currentPolicies = resp.data || [];
+            renderTable(currentPolicies);
+            renderPagination(resp.total, resp.offset, resp.has_more);
+        })
+        .catch(function(err) {
+            document.getElementById('loadingIndicator').style.display = 'none';
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('errorMessage').textContent = err.message || 'Could not connect to the device.';
+        });
+}
+
+function renderTable(policies) {
+    var tbody = document.getElementById('policyTableBody');
+    if (!policies.length) {
+        document.getElementById('policyTable').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+    }
+    document.getElementById('policyTable').style.display = 'table';
+    document.getElementById('emptyState').style.display = 'none';
+
+    var html = '';
+    for (var i = 0; i < policies.length; i++) {
+        var p = policies[i];
+        var statusClass = p.status === 'enable' ? 'status-enable' : 'status-disable';
+        // Support both FortiGate format (srcaddr/dstaddr with name objects) and legacy (src/dst arrays)
+        var srcList = p.srcaddr || p.src || [];
+        var dstList = p.dstaddr || p.dst || [];
+        var src = srcList.map(function(item) { return typeof item === 'object' ? item.name : item; }).join(', ') || 'all';
+        var dst = dstList.map(function(item) { return typeof item === 'object' ? item.name : item; }).join(', ') || 'all';
+        var anomalies = p.anomaly || [];
+        var enabledCount = anomalies.filter(function(a) { return a.status === 'enable'; }).length;
+        var totalAnomalies = anomalies.length;
+
+        html += '<tr>';
+        html += '<td>' + (p.id || p.policyid || '-') + '</td>';
+        html += '<td><strong>' + escHtml(p.name || 'Unnamed') + '</strong></td>';
+        html += '<td><span class="status-badge ' + statusClass + '">' + escHtml(p.status) + '</span></td>';
+        html += '<td style="font-size:0.85rem;">' + escHtml(src) + '</td>';
+        html += '<td style="font-size:0.85rem;">' + escHtml(dst) + '</td>';
+        html += '<td><span class="anomaly-tag anomaly-enabled">' + enabledCount + '/' + totalAnomalies + '</span></td>';
+        html += '<td>';
+        html += '<button class="btn btn-sm btn-outline-info me-1" onclick="viewPolicy(' + (p.id || p.policyid) + ')">View</button>';
+        html += '</td>';
+        html += '</tr>';
+    }
+    tbody.innerHTML = html;
+}
+
+function renderPagination(total, offset, hasMore) {
+    var info = document.getElementById('paginationInfo');
+    var start = offset + 1;
+    var end = Math.min(offset + currentPolicies.length, total);
+    info.textContent = currentPolicies.length ? ('Showing ' + start + '-' + end + ' of ' + total) : '';
+    document.getElementById('btnPrev').disabled = currentPage === 0;
+    document.getElementById('btnNext').disabled = !hasMore;
+}
+
+function nextPage() { currentPage++; loadPolicies(); }
+function prevPage() { if (currentPage > 0) currentPage--; loadPolicies(); }
+
+function sortTable(field) {
+    if (currentSort.field === field) {
+        currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.field = field;
+        currentSort.order = 'asc';
+    }
+    document.querySelectorAll('[id^="sort-"]').forEach(function(el) { el.textContent = ''; });
+    document.getElementById('sort-' + field).textContent = currentSort.order === 'asc' ? '▲' : '▼';
+    loadPolicies();
+}
+
+function clearFilters() {
+    document.getElementById('filterName').value = '';
+    document.getElementById('filterStatus').value = '';
+    currentPage = 0;
+    loadPolicies();
+}
+
+function viewPolicy(policyId) {
+    var modal = new bootstrap.Modal(document.getElementById('policyDetailModal'));
+    document.getElementById('modalPolicyName').textContent = 'Policy #' + policyId;
+    document.getElementById('modalPolicyBody').innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div></div>';
+    modal.show();
+
+    fetch(POLICY_BASE + policyId + '?device_id=' + getDeviceId())
+        .then(readJson)
+        .then(function(resp) {
+            if (resp.error) {
+                document.getElementById('modalPolicyBody').innerHTML = '<p style="color:#dc3545;">' + escHtml(resp.message) + '</p>';
+                return;
+            }
+            var p = resp.data;
+            var html = '<table class="table table-sm" style="color:var(--stl-text);">';
+            html += '<tr><td style="width:160px; color:var(--stl-muted);">Name</td><td><strong>' + escHtml(p.name || '') + '</strong></td></tr>';
+            html += '<tr><td style="color:var(--stl-muted);">Status</td><td>' + escHtml(p.status || '') + '</td></tr>';
+            var srcList = p.srcaddr || p.src || [];
+            var dstList = p.dstaddr || p.dst || [];
+            var svcList = p.service || [];
+            var srcNames = srcList.map(function(item) { return typeof item === 'object' ? item.name : item; }).join(', ') || 'all';
+            var dstNames = dstList.map(function(item) { return typeof item === 'object' ? item.name : item; }).join(', ') || 'all';
+            var svcNames = svcList.map(function(item) { return typeof item === 'object' ? item.name : item; }).join(', ') || 'ALL';
+            html += '<tr><td style="color:var(--stl-muted);">Source</td><td>' + escHtml(srcNames) + '</td></tr>';
+            html += '<tr><td style="color:var(--stl-muted);">Destination</td><td>' + escHtml(dstNames) + '</td></tr>';
+            html += '<tr><td style="color:var(--stl-muted);">Service</td><td>' + escHtml(svcNames) + '</td></tr>';
+            var iface = p.interface;
+            if (iface) {
+                var ifaceName = typeof iface === 'object' ? (iface.q_origin_key || iface.name || '') : iface;
+                html += '<tr><td style="color:var(--stl-muted);">Interface</td><td>' + escHtml(ifaceName) + '</td></tr>';
+            }
+            if (p.comments) {
+                html += '<tr><td style="color:var(--stl-muted);">Comments</td><td>' + escHtml(p.comments) + '</td></tr>';
+            }
+            html += '</table>';
+
+            var anomalies = p.anomaly || [];
+            if (anomalies.length) {
+                html += '<h6 style="color:var(--stl-muted); text-transform:uppercase; letter-spacing:0.5px; font-size:0.8rem; margin-top:16px;">Anomaly Configuration</h6>';
+                html += '<table class="table table-sm" style="color:var(--stl-text); font-size:0.85rem;">';
+                html += '<thead><tr><th>Anomaly</th><th>Status</th><th>Action</th><th>Threshold</th><th>Log</th></tr></thead><tbody>';
+                for (var i = 0; i < anomalies.length; i++) {
+                    var a = anomalies[i];
+                    html += '<tr>';
+                    html += '<td>' + escHtml(a.name || '') + '</td>';
+                    html += '<td>' + escHtml(a.status || '') + '</td>';
+                    html += '<td>' + escHtml(a.action || '') + '</td>';
+                    html += '<td>' + (a.threshold !== undefined ? a.threshold : '-') + '</td>';
+                    html += '<td>' + escHtml(a.log || '') + '</td>';
+                    html += '</tr>';
+                }
+                html += '</tbody></table>';
+            }
+            document.getElementById('modalPolicyBody').innerHTML = html;
+        })
+        .catch(function() {
+            document.getElementById('modalPolicyBody').innerHTML = '<p style="color:#dc3545;">Could not connect to the device. Please check API credentials and network connectivity.</p>';
+        });
+}
+
+// Audit
+function runAudit() {
+    document.getElementById('loadingOverlay').classList.add('active');
+    document.getElementById('auditSummary').style.display = 'none';
+
+    fetch(AUDIT_URL + '?device_id=' + getDeviceId())
+        .then(readJson)
+        .then(function(resp) {
+            document.getElementById('loadingOverlay').classList.remove('active');
+            if (resp.error) {
+                alert(resp.message || 'Audit failed.');
+                return;
+            }
+            renderAuditSummary(resp.summary);
+            renderAuditTable(resp.data);
+            document.getElementById('auditSummary').style.display = 'block';
+        })
+        .catch(function(err) {
+            document.getElementById('loadingOverlay').classList.remove('active');
+            alert(err.message || 'Could not connect to the device for audit.');
+        });
+}
+
+function renderAuditSummary(summary) {
+    var html = '';
+    html += '<div class="col-md-2"><div class="summary-card"><div class="value">' + summary.total_policies + '</div><div class="label">Total Policies</div></div></div>';
+    // avg_score is a posture score (higher = better), so band by its inverse risk.
+    var avgRisk = 100 - (Number(summary.avg_score) || 0);
+    var avgTone = avgRisk >= 80 ? 'critical' : avgRisk >= 60 ? 'high' : avgRisk >= 40 ? 'medium' : avgRisk >= 20 ? 'low' : 'info';
+    html += '<div class="col-md-2"><div class="summary-card"><div class="value tone-' + avgTone + '">' + summary.avg_score + '</div><div class="label">Avg Score</div></div></div>';
+    html += '<div class="col-md-2"><div class="summary-card"><div class="value tone-low">' + summary.enabled_count + '</div><div class="label">Enabled</div></div></div>';
+    html += '<div class="col-md-2"><div class="summary-card"><div class="value tone-info">' + summary.disabled_count + '</div><div class="label">Disabled</div></div></div>';
+    var counts = summary.risk_counts || {};
+    html += '<div class="col-md-2"><div class="summary-card"><div class="value tone-critical">' + (counts.critical || 0) + '</div><div class="label">Critical</div></div></div>';
+    html += '<div class="col-md-2"><div class="summary-card"><div class="value tone-high">' + (counts.high || 0) + '</div><div class="label">High</div></div></div>';
+    document.getElementById('auditSummaryCards').innerHTML = html;
+}
+
+function renderAuditTable(results) {
+    var tbody = document.getElementById('auditTableBody');
+    var html = '';
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        var levelClass = 'risk-' + r.risk_level;
+        // audit_score is a posture score (higher = better), so the bar
+        // is green at the top. risk_level is derived as
+        // _risk_level(100 - audit_score), so the two agree.
+        var barColor = r.audit_score >= 80 ? '#198754' : r.audit_score >= 60 ? '#fd7e14' : r.audit_score >= 40 ? '#ffc107' : '#dc3545';
+        html += '<tr>';
+        html += '<td>' + (r.policy_id || '-') + '</td>';
+        html += '<td><strong>' + escHtml(r.name || '') + '</strong></td>';
+        html += '<td><span class="status-badge status-' + r.status + '">' + escHtml(r.status) + '</span></td>';
+        html += '<td><span class="audit-score"><span class="audit-score-bar" style="width:' + r.audit_score + 'px; background:' + barColor + ';"></span> ' + r.audit_score + '/100</span></td>';
+        html += '<td><span class="risk-badge ' + levelClass + '">' + r.risk_level + '</span></td>';
+        html += '<td><button class="btn btn-sm btn-outline-info" onclick="viewAuditDetail(' + i + ')">Details</button></td>';
+        html += '</tr>';
+    }
+    tbody.innerHTML = html;
+    window._auditResults = results;
+}
+
+function viewAuditDetail(index) {
+    var r = window._auditResults[index];
+    var modal = new bootstrap.Modal(document.getElementById('auditDetailModal'));
+    document.getElementById('modalAuditName').textContent = 'Audit: ' + (r.name || 'Policy #' + r.policy_id);
+
+    var html = '';
+    // Dimensions
+    var dims = r.dimensions || [];
+    for (var i = 0; i < dims.length; i++) {
+        var d = dims[i];
+        html += '<div class="factor-card">';
+        html += '<h6>' + escHtml(d.dimension.replace(/_/g, ' ')) + ' — Score: ' + d.score + '/100</h6>';
+        var findings = d.findings || [];
+        for (var j = 0; j < findings.length; j++) {
+            html += '<div class="finding-item">' + escHtml(findings[j]) + '</div>';
+        }
+        var af = d.anomaly_findings || [];
+        for (var k = 0; k < af.length; k++) {
+            var severity = (af[k].severity || 'info').toLowerCase();
+            html += '<div class="finding-item" style="color:' + (severity === 'critical' ? '#dc3545' : severity === 'high' ? '#fd7e14' : '#ffc107') + ';">';
+            html += '<strong>[' + escHtml(severity.toUpperCase()) + ']</strong> ' + escHtml(af[k].message);
+            if (af[k].remediation) {
+                html += '<br><span class="remediation-item">' + escHtml(af[k].remediation) + '</span>';
+            }
+            html += '</div>';
+        }
+        if (!findings.length && !af.length) {
+            html += '<div class="finding-item" style="color:#198754;">No issues found</div>';
+        }
+        html += '</div>';
+    }
+
+    // Overall remediation
+    var remediation = r.remediation || [];
+    if (remediation.length) {
+        html += '<h6 style="color:var(--stl-muted); text-transform:uppercase; letter-spacing:0.5px; font-size:0.8rem; margin-top:16px;">Remediation Actions</h6>';
+        for (var m = 0; m < remediation.length; m++) {
+            html += '<div class="remediation-item">' + escHtml(remediation[m]) + '</div>';
+        }
+    }
+
+    document.getElementById('modalAuditBody').innerHTML = html;
+    modal.show();
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
+// Initial load
+if (selectedDeviceId) loadPolicies();
+</script>
+</body>
+</html>

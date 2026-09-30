@@ -671,6 +671,9 @@ label:not(.hk-admin-layout label) {
 
 .hk-admin-body {
     background: var(--stl-bg);
+    /* bootstrap.min.css loads after this file and resets body colour to dark;
+       a class selector wins regardless of order */
+    color: var(--stl-text);
 }
 
 .hk-admin-layout {
@@ -1702,3 +1705,68 @@ label:not(.hk-admin-layout label) {
     font-size: 0.82rem;
     font-style: italic;
 }
+
+
+/* Dashboard widgets (client home) */
+.hk-widget-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.hk-widget-hint { margin: 0; color: var(--stl-muted); font-size: 0.85rem; }
+.hk-widget-actions { display: flex; gap: 8px; margin-left: auto; }
+.hk-widget-tray {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    border: 1px dashed var(--stl-border-strong);
+    border-radius: 12px;
+    background: var(--stl-surface);
+}
+.hk-widget-tray[hidden] { display: none; }
+.hk-widget-tray-label { color: var(--stl-muted); font-size: 0.85rem; }
+.hk-widget-tray-empty { color: var(--stl-muted); font-size: 0.85rem; }
+.hk-widget-chip {
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    background: rgba(6, 182, 212, 0.08);
+    color: var(--stl-primary);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.hk-widget-chip:hover { background: rgba(6, 182, 212, 0.18); }
+.hk-widget { position: relative; display: flex; }
+.hk-widget > .hk-widget-card { flex: 1; }
+.hk-widget-controls {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 2;
+    display: flex;
+    gap: 6px;
+}
+.hk-widget-controls[hidden] { display: none; }
+.hk-widget-btn {
+    width: 28px;
+    height: 28px;
+    line-height: 1;
+    border-radius: 8px;
+    border: 1px solid var(--stl-border-strong);
+    background: var(--stl-surface-2);
+    color: var(--stl-text);
+    cursor: pointer;
+}
+.hk-widget-btn:hover { border-color: var(--stl-primary); }
+.hk-widget-remove:hover { border-color: var(--stl-danger); color: var(--stl-danger); }
+.hk-widgets-editing .hk-widget { cursor: grab; }
+.hk-widgets-editing .hk-widget-card { outline: 1px dashed var(--stl-border-strong); }
+.hk-widgets-editing .hk-widget-card:hover { transform: none; }
+.hk-widget-dragging { opacity: 0.45; }

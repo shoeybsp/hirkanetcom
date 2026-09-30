@@ -24,7 +24,12 @@
         .remediation-item { font-size:0.85rem; color:#20c997; margin:3px 0; padding-left:12px; position:relative; }
         .remediation-item::before { content:""; position:absolute; left:0; top:7px; width:4px; height:4px; border-radius:50%; background:#20c997; }
         .summary-card { background:var(--stl-card-bg, #1a1f2e); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:16px; text-align:center; }
-        .summary-card .value { font-size:2rem; font-weight:700; }
+        .summary-card .value { font-size:2rem; font-weight:700; color:var(--stl-text, #e5eefc); }
+        .summary-card .value.tone-critical { color:#ef5e5e; }
+        .summary-card .value.tone-high { color:#fd7e14; }
+        .summary-card .value.tone-medium { color:#ffc107; }
+        .summary-card .value.tone-low { color:#2fbf71; }
+        .summary-card .value.tone-info { color:#8ea0b8; }
         .summary-card .label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--stl-muted, #8892a4); margin-top:4px; }
     </style>
 </head>
@@ -56,6 +61,12 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 <span>Risk Assessment</span>
             </a>
+            {% if 'dos_policy' in subscribed_services %}
+            <a href="{{ url_for('client.dos_policies') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>DoS Policies</span>
+            </a>
+            {% endif %}
         </nav>
 
         <div class="hk-sidebar-footer">
@@ -172,31 +183,31 @@
                 </div>
                 <div class="col">
                     <div class="summary-card">
-                        <div class="value" id="summaryAvg" style="color:#ffc107;">0</div>
+                        <div class="value" id="summaryAvg">0</div>
                         <div class="label">Avg Risk Score</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="summary-card">
-                        <div class="value" id="summaryCritical" style="color:#dc3545;">0</div>
+                        <div class="value tone-critical" id="summaryCritical">0</div>
                         <div class="label">Critical</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="summary-card">
-                        <div class="value" id="summaryHigh" style="color:#fd7e14;">0</div>
+                        <div class="value tone-high" id="summaryHigh">0</div>
                         <div class="label">High</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="summary-card">
-                        <div class="value" id="summaryMedium" style="color:#ffc107;">0</div>
+                        <div class="value tone-medium" id="summaryMedium">0</div>
                         <div class="label">Medium</div>
                     </div>
                 </div>
                 <div class="col">
                     <div class="summary-card">
-                        <div class="value" id="summaryLow" style="color:#198754;">0</div>
+                        <div class="value tone-low" id="summaryLow">0</div>
                         <div class="label">Low</div>
                     </div>
                 </div>
@@ -455,7 +466,11 @@
         }
         summaryRow.style.display = 'flex';
         document.getElementById('summaryTotal').textContent = summary.total_policies;
-        document.getElementById('summaryAvg').textContent = summary.avg_risk_score;
+        var avgEl = document.getElementById('summaryAvg');
+        avgEl.textContent = summary.avg_risk_score;
+        // Colour the average by its risk band (higher score = higher risk).
+        var avg = Number(summary.avg_risk_score) || 0;
+        avgEl.className = 'value tone-' + (avg >= 80 ? 'critical' : avg >= 60 ? 'high' : avg >= 40 ? 'medium' : avg >= 20 ? 'low' : 'info');
         document.getElementById('summaryCritical').textContent = summary.critical_count;
         document.getElementById('summaryHigh').textContent = summary.high_count;
         document.getElementById('summaryMedium').textContent = summary.medium_count;

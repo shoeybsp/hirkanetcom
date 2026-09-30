@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>{{ 'Edit' if is_edit else 'Create' }} DoS Policy - SecureTrack-Lite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <style>
+        .anomaly-row { background:var(--stl-card-bg, #1a1f2e); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; margin-bottom:8px; }
+        .anomaly-row h6 { margin:0 0 8px; font-size:0.9rem; color:var(--stl-text, #e0e6ed); }
+        .anomaly-config { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px; }
+        .section-header { color:var(--stl-muted, #8892a4); text-transform:uppercase; letter-spacing:0.5px; font-size:0.8rem; font-weight:600; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.08); }
+        .field-error { color:#dc3545; font-size:0.8rem; margin-top:2px; }
+        .field-hint { color:var(--stl-muted, #8892a4); font-size:0.8rem; margin-top:2px; }
+        .form-check-input:checked { background-color:#0d6efd; border-color:#0d6efd; }
+    </style>
+</head>
+<body class="hk-admin-body">
+
+<div class="hk-admin-layout">
+    <aside class="hk-sidebar" id="hkSidebar">
+        <div class="hk-sidebar-brand">
+            <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                <span class="hk-sidebar-brand-text">SecureTrack-Lite</span>
+            </a>
+        </div>
+
+        <nav class="hk-sidebar-nav">
+            <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="{{ url_for('client.policy_evaluation') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Policy Evaluation</span>
+            </a>
+            <a href="{{ url_for('client.policy_catalog') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span>Policy Catalog</span>
+            </a>
+            <a href="{{ url_for('client.risk_assessment') }}" class="hk-sidebar-link">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Risk Assessment</span>
+            </a>
+            {% if 'dos_policy' in subscribed_services %}
+            <a href="{{ url_for('client.dos_policies') }}" class="hk-sidebar-link {% if request.endpoint in ('client.dos_policies', 'client.dos_policy_detail', 'client.dos_policy_create', 'client.dos_policy_edit') %}active{% endif %}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>DoS Policies</span>
+            </a>
+            {% endif %}
+        </nav>
+
+        <div class="hk-sidebar-footer">
+            <div class="hk-sidebar-user">
+                <span class="hk-sidebar-role-badge">{{ current_user.role }}</span>
+                <span class="hk-sidebar-username">{{ current_user.username }}</span>
+            </div>
+            <form method="POST" action="{{ url_for('logout') }}" class="stl-logout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="hk-sidebar-link hk-sidebar-logout">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Sign Out</span>
+                </button>
+            </form>
+        </div>
+    </aside>
+
+    <main class="hk-main">
+        <header class="hk-main-header">
+            <button class="hk-sidebar-toggle" id="hkSidebarToggle" aria-label="Toggle sidebar">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <div class="hk-header-left">
+                <h1 class="hk-page-title">{{ 'Edit' if is_edit else 'Create' }} DoS Policy</h1>
+                <p class="hk-page-subtitle">{{ 'Modify an existing' if is_edit else 'Add a new' }} FortiGate DoS policy.</p>
+            </div>
+        </header>
+
+        <div class="hk-main-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            {% if devices and selected_device %}
+            <form method="POST" action="{{ url_for('client.dos_policy_edit', policy_id=policy) if is_edit else url_for('client.dos_policy_create') }}" id="dosPolicyForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="device_id" value="{{ selected_device.id if selected_device else '' }}">
+
+                <!-- Device Selector -->
+                <div class="mb-3">
+                    <label for="deviceSelect" class="form-label" style="color:var(--stl-muted); font-size:0.85rem;">Target Device</label>
+                    <select id="deviceSelect" class="form-select" style="max-width:300px;">
+                        {% for device in devices %}
+                        <option value="{{ device.id }}" {% if selected_device and device.id == selected_device.id %}selected{% endif %}>{{ device.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- General Settings -->
+                <div class="card hk-card mb-4">
+                    <div class="card-body">
+                        <div class="section-header">General Settings</div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="name" class="form-label">Policy Name <span style="color:#dc3545;">*</span></label>
+                                <input type="text" class="form-control" id="name" name="name" value="{{ form_data.name or (existing.name if existing else '') }}" required maxlength="127">
+                                {% if errors and errors.get('name') %}<div class="field-error">{{ errors.name[0] }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="status" class="form-label">Status</label>
+                                <select class="form-select" id="status" name="status">
+                                    <option value="enable" {% if (form_data.status or (existing.status if existing else 'enable')) == 'enable' %}selected{% endif %}>Enabled</option>
+                                    <option value="disable" {% if (form_data.status or (existing.status if existing else '')) == 'disable' %}selected{% endif %}>Disabled</option>
+                                </select>
+                                {% if errors and errors.get('status') %}<div class="field-error">{{ errors.status[0] }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="interface" class="form-label">Interface</label>
+                                <input type="text" class="form-control" id="interface" name="interface" value="{{ form_data.interface or (existing.interface.q_origin_key if existing and existing.interface else '') }}" placeholder="e.g. port2">
+                                <div class="field-hint">The interface this policy applies to.</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-12">
+                                <label for="comments" class="form-label">Comments</label>
+                                <input type="text" class="form-control" id="comments" name="comments" value="{{ form_data.comments or (existing.comments if existing else '') }}" placeholder="Optional description">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Address Configuration -->
+                <div class="card hk-card mb-4">
+                    <div class="card-body">
+                        <div class="section-header">Address &amp; Service Configuration</div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="srcaddr" class="form-label">Source Addresses</label>
+                                <input type="text" class="form-control" id="srcaddr" name="srcaddr" value="{{ form_data.srcaddr | join(', ') if form_data.srcaddr is iterable and form_data.srcaddr is not string else (existing.srcaddr | map(attribute='name') | join(', ') if existing and existing.srcaddr else '') }}" placeholder="Comma-separated, e.g. internal_net, all">
+                                <div class="field-hint">Leave empty for 'all'. Comma-separated address object names.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="dstaddr" class="form-label">Destination Addresses</label>
+                                <input type="text" class="form-control" id="dstaddr" name="dstaddr" value="{{ form_data.dstaddr | join(', ') if form_data.dstaddr is iterable and form_data.dstaddr is not string else (existing.dstaddr | map(attribute='name') | join(', ') if existing and existing.dstaddr else '') }}" placeholder="Comma-separated, e.g. web_servers, all">
+                                <div class="field-hint">Leave empty for 'all'. Comma-separated address object names.</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <label for="service" class="form-label">Service Filter</label>
+                                <input type="text" class="form-control" id="service" name="service" value="{{ form_data.service | join(', ') if form_data.service is iterable and form_data.service is not string else (existing.service | map(attribute='name') | join(', ') if existing and existing.service else '') }}" placeholder="Comma-separated, e.g. HTTP, DNS, ALL">
+                                <div class="field-hint">Leave empty for 'ALL'. Comma-separated service names.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Anomaly Configuration -->
+                <div class="card hk-card mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="section-header mb-0">Anomaly Configuration</div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="enableAllAnomalies()">Enable All</button>
+                        </div>
+                        <div id="anomalyContainer">
+                            <!-- Anomalies are rendered by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <div class="d-flex gap-2 mb-4">
+                    <button type="submit" class="btn btn-primary">{{ 'Update Policy' if is_edit else 'Create Policy' }}</button>
+                    <a href="{{ url_for('client.dos_policies', device_id=selected_device.id if selected_device else '') }}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+            {% else %}
+            <div class="col-12">
+                <div class="hk-mgmt-card text-center" style="border:none;">
+                    <div class="card-body py-5 stl-empty-state">
+                        <h3 class="mb-3" style="color: #f8fbff;">No Devices Available</h3>
+                        <p style="color: var(--stl-muted); max-width: 540px; margin: 0 auto;">
+                            No devices are assigned to your account. Please contact your administrator.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <footer class="hk-main-footer">
+            <span>SecureTrack-Lite &middot; Client Portal</span>
+        </footer>
+    </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function() {
+    var sidebar = document.getElementById('hkSidebar');
+    var toggle = document.getElementById('hkSidebarToggle');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', function() {
+            sidebar.classList.toggle('hk-sidebar-collapsed');
+        });
+    }
+})();
+
+// Device selector updates hidden field
+document.getElementById('deviceSelect').addEventListener('change', function() {
+    document.querySelector('input[name="device_id"]').value = this.value;
+});
+
+// Known anomaly types
+var ANOMALY_TYPES = [
+    'tcp_syn_flood', 'icmp_flood', 'udp_flood', 'tcp_udp_flood',
+    'tcp_syn_proxy', 'tcp_port_scan', 'tcp_udp_other',
+    'icmp_land', 'udp_land', 'ip_spoofing', 'land_attack',
+    'ip_martian_source', 'ip_bad_options', 'ip_unknown_protocol',
+    'tcp_crlf', 'tcp_no_flag', 'tcp_syn_fin', 'tcp_syn_rst',
+    'tcp_fin_no_ack', 'tcp_xmas', 'tcp_null', 'tcp_fin_only',
+    'udp_broadcast'
+];
+
+// Load existing anomaly data if editing. After a validation failure the
+// route hands back what was submitted so the user's edits survive the
+// round trip instead of snapping back to the device's state.
+var isEdit = {{ 'true' if is_edit else 'false' }};
+var submittedAnomalies = {{ form_anomalies | default([], true) | tojson }};
+var existingAnomalies = {{ existing.anomaly | tojson if existing and existing.anomaly else '[]' }};
+var initialAnomalies = submittedAnomalies.length ? submittedAnomalies : existingAnomalies;
+var existingMap = {};
+for (var i = 0; i < initialAnomalies.length; i++) {
+    existingMap[initialAnomalies[i].name] = initialAnomalies[i];
+}
+
+function renderAnomalies() {
+    var container = document.getElementById('anomalyContainer');
+    var html = '';
+    // When editing, only show anomalies the device actually has.
+    // Showing types the device doesn't have makes them look "disabled"
+    // when they simply don't exist. After a failed submit, show back
+    // exactly the rows the user submitted.
+    var typesToRender = isEdit ? initialAnomalies.map(function(a) { return a.name; }) : ANOMALY_TYPES;
+    for (var i = 0; i < typesToRender.length; i++) {
+        var name = typesToRender[i];
+        var e = existingMap[name] || {};
+        var isEnabled = e.status === 'enable';
+        var action = e.action || 'block';
+        var threshold = e.threshold !== undefined ? e.threshold : '';
+        var log = e.log || 'disable';
+        var quarantine = e.quarantine || 'none';
+        var quarantineExpiry = e['quarantine-expiry'] || '5m';
+        var quarantineLog = e['quarantine-log'] || 'disable';
+
+        html += '<div class="anomaly-row">';
+        html += '<div class="d-flex align-items-center mb-2">';
+        html += '<div class="form-check form-switch me-3">';
+        html += '<input class="form-check-input" type="checkbox" id="anomaly_' + i + '_enabled" ' + (isEnabled ? 'checked' : '') + ' onchange="toggleAnomaly(' + i + ', this.checked)">';
+        html += '</div>';
+        html += '<h6 class="mb-0" style="color:var(--stl-text);">' + name.replace(/_/g, ' ') + '</h6>';
+        html += '</div>';
+        html += '<div class="anomaly-config" id="anomaly_config_' + i + '" style="' + (isEnabled ? '' : 'opacity:0.4; pointer-events:none;') + '">';
+        html += '<input type="hidden" name="anomaly_' + i + '_name" value="' + name + '">';
+        html += '<input type="hidden" name="anomaly_' + i + '_status" value="' + (isEnabled ? 'enable' : 'disable') + '" id="anomaly_' + i + '_status">';
+        html += '<div><label style="font-size:0.75rem; color:var(--stl-muted);">Action</label>';
+        html += '<select class="form-select form-select-sm" name="anomaly_' + i + '_action">';
+        html += '<option value="pass"' + (action === 'pass' ? ' selected' : '') + '>Pass</option>';
+        html += '<option value="block"' + (action === 'block' ? ' selected' : '') + '>Block</option>';
+        html += '<option value="quarantine"' + (action === 'quarantine' ? ' selected' : '') + '>Quarantine</option>';
+        html += '</select></div>';
+        html += '<div><label style="font-size:0.75rem; color:var(--stl-muted);">Threshold</label>';
+        html += '<input type="number" class="form-control form-control-sm" name="anomaly_' + i + '_threshold" value="' + threshold + '" placeholder="Auto" min="0"></div>';
+        html += '<div><label style="font-size:0.75rem; color:var(--stl-muted);">Log</label>';
+        html += '<select class="form-select form-select-sm" name="anomaly_' + i + '_log">';
+        html += '<option value="disable"' + (log === 'disable' ? ' selected' : '') + '>Off</option>';
+        html += '<option value="enable"' + (log === 'enable' ? ' selected' : '') + '>On</option>';
+        html += '</select></div>';
+        html += '<div><label style="font-size:0.75rem; color:var(--stl-muted);">Quarantine</label>';
+        html += '<select class="form-select form-select-sm" name="anomaly_' + i + '_quarantine">';
+        html += '<option value="none"' + (quarantine === 'none' ? ' selected' : '') + '>None</option>';
+        html += '<option value="per-source"' + (quarantine === 'per-source' ? ' selected' : '') + '>Per-Source</option>';
+        html += '<option value="per-destination"' + (quarantine === 'per-destination' ? ' selected' : '') + '>Per-Destination</option>';
+        html += '</select></div>';
+        html += '<div><label style="font-size:0.75rem; color:var(--stl-muted);">Quarantine Expiry</label>';
+        html += '<input type="text" class="form-control form-control-sm" name="anomaly_' + i + '_quarantine-expiry" value="' + quarantineExpiry + '" placeholder="e.g. 5m"></div>';
+        html += '<div><label style="font-size:0.75rem; color:var(--stl-muted);">Quarantine Log</label>';
+        html += '<select class="form-select form-select-sm" name="anomaly_' + i + '_quarantine-log">';
+        html += '<option value="disable"' + (quarantineLog === 'disable' ? ' selected' : '') + '>Off</option>';
+        html += '<option value="enable"' + (quarantineLog === 'enable' ? ' selected' : '') + '>On</option>';
+        html += '</select></div>';
+        html += '</div></div>';
+    }
+    container.innerHTML = html;
+}
+
+function toggleAnomaly(index, enabled) {
+    var statusField = document.getElementById('anomaly_' + index + '_status');
+    var configDiv = document.getElementById('anomaly_config_' + index);
+    statusField.value = enabled ? 'enable' : 'disable';
+    configDiv.style.opacity = enabled ? '1' : '0.4';
+    configDiv.style.pointerEvents = enabled ? 'auto' : 'none';
+}
+
+function enableAllAnomalies() {
+    // Iterate the rows actually rendered. In edit mode only the device's
+    // existing anomalies are rendered, so indexing ANOMALY_TYPES would
+    // miss rows and try to touch ones that don't exist.
+    var checkboxes = document.querySelectorAll('#anomalyContainer input[id$="_enabled"]');
+    for (var i = 0; i < checkboxes.length; i++) {
+        var checkbox = checkboxes[i];
+        var index = checkbox.id.replace('anomaly_', '').replace('_enabled', '');
+        if (!checkbox.checked) {
+            checkbox.checked = true;
+            toggleAnomaly(index, true);
+        }
+    }
+}
+
+// Initialize
+renderAnomalies();
+</script>
+</body>
+</html>

@@ -44,6 +44,9 @@ class User(UserMixin, db.Model):
     salt = db.Column(db.String(64), nullable=False, default="")
     role = db.Column(db.String(20), nullable=False, default="client")  # "admin" or "client"
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # JSON list of widget keys shown on the client home page, in order.
+    # NULL = never customised (show everything); see client/dashboard_widgets.py.
+    dashboard_layout = db.Column(db.Text, nullable=True)
 
     subscriptions = db.relationship(
         "Subscription",
@@ -344,10 +347,16 @@ def _seed_defaults():
                 "description": "Score and rank firewall policies by security risk with remediation guidance",
                 "service_type": "policy_risk_assessment",
             },
+            {
+                "name": "DoS Policy Management",
+                "description": "View and audit FortiGate DoS policies in real-time",
+                "service_type": "dos_policy",
+            },
         ]
         for svc_data in default_services:
-            if Service.query.filter_by(
-                service_type=svc_data["service_type"]
+            if Service.query.filter(
+                (Service.service_type == svc_data["service_type"]) |
+                (Service.name == svc_data["name"])
             ).first() is None:
                 db.session.add(Service(**svc_data))
 

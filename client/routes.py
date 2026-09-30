@@ -13,6 +13,13 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from models import db, Service, Subscription
+from database_transactions import commit_transaction
+from client.dashboard_widgets import (
+    build_available_widgets,
+    resolve_layout,
+    sanitize_layout,
+    serialize_layout,
+)
 from engine.evaluator import SecureTrackLite
 from engine.snapshot_store import active_snapshot_id
 from validation.evaluation import EvaluationInputError, MAX_BATCH_ROWS
@@ -25,6 +32,11 @@ from client.access import (
     has_device_access,
 )
 from collectors.sync_service import resolve_device_data_root
+from services.dos_policy import DosPolicyService, DosPolicyServiceError
+from validation.dos_policy import (
+    validate_dos_policy_list_params,
+    DosPolicyValidationError,
+)
 
 client_bp = Blueprint("client", __name__, url_prefix="/client")
 logger = logging.getLogger(__name__)
@@ -202,9 +214,38 @@ def get_subscribed_services():
 @client_bp.route("/")
 @login_required
 def dashboard():
-    """Client dashboard showing available services based on subscriptions."""
+    """Client home: the widgets the user chose from their available services."""
     services = get_subscribed_services()
-    return render_template("client/dashboard.html", services=services)
+    available = build_available_widgets(services)
+    shown, hidden = resolve_layout(available, current_user.dashboard_layout)
+    return render_template(
+        "client/dashboard.html",
+        services=services,
+        shown_widgets=shown,
+        hidden_widgets=hidden,
+    )
+
+
+@client_bp.route("/dashboard/layout", methods=["POST"])
+@login_required
+def dashboard_layout():
+    """Save (or reset) the signed-in user's dashboard widget layout."""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_request", "message": "Expected a JSON object."}), 400
+
+    if payload.get("reset") is True:
+        current_user.dashboard_layout = None
+    else:
+        available = build_available_widgets(get_subscribed_services())
+        try:
+            keys = sanitize_layout(payload.get("layout"), available)
+        except ValueError as exc:
+            return jsonify({"error": "invalid_layout", "message": str(exc)}), 400
+        current_user.dashboard_layout = serialize_layout(keys)
+
+    commit_transaction("save dashboard layout")
+    return jsonify({"status": "saved"})
 
 
 # =============================================================================
@@ -701,3 +742,208 @@ def risk_assessment_results():
         "device_id": device_id,
         "device_name": device.name,
     })
+
+
+# =============================================================================
+# DoS Policy Service (read-only listing and auditing of DoS policies)
+# =============================================================================
+
+
+def _dos_service(device):
+    """Build a DosPolicyService for a device, or return (None, error_message)."""
+    try:
+        return DosPolicyService(device), None
+    except DosPolicyServiceError as exc:
+        return None, str(exc)
+
+
+def _resolve_dos_device(device_id, devices):
+    """Validate device access for DoS policy operations."""
+    if not devices:
+        return None, "No devices are assigned to your account."
+    if not device_id:
+        return None, "Please select a device."
+    device = next((d for d in devices if d.id == device_id), None)
+    if not device:
+        return None, "You do not have access to the selected device."
+    return device, None
+
+
+@client_bp.route("/dos-policies")
+@login_required
+@subscription_required("dos_policy")
+def dos_policies():
+    """DoS policy page - list, filter and audit (read-only)."""
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+    selected_device, device_error = _resolve_dos_device(device_id, devices)
+    if selected_device is None and devices and not device_id:
+        # Landed here without a device_id (e.g. from the dashboard card).
+        # Default to the first assigned device so the page has something
+        # to load instead of rendering empty.
+        selected_device, device_error = devices[0], None
+    return render_template(
+        "client/dos_policies.html",
+        devices=devices,
+        selected_device=selected_device,
+        device_error=device_error,
+    )
+
+
+@client_bp.route("/dos-policies/results")
+@login_required
+@subscription_required("dos_policy")
+def dos_policies_results():
+    """Return paginated, filtered DoS policies as JSON."""
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+    selected_device, device_error = _resolve_dos_device(device_id, devices)
+    if device_error:
+        return jsonify({"error": "device_error", "message": device_error}), 400
+
+    try:
+        validated = validate_dos_policy_list_params(
+            limit=request.args.get("limit"),
+            offset=request.args.get("offset"),
+            sort_by=request.args.get("sort_by"),
+            sort_order=request.args.get("sort_order"),
+            status=request.args.get("status"),
+            name=request.args.get("name"),
+        )
+    except DosPolicyValidationError as exc:
+        return jsonify({"error": "validation_failed", "details": exc.errors}), 400
+
+    svc, svc_error = _dos_service(selected_device)
+    if svc_error:
+        return jsonify({"error": "service_error", "message": svc_error}), 503
+
+    try:
+        result = svc.list_policies()
+    except DosPolicyServiceError as exc:
+        logger.error("DoS policy list failed: %s", exc)
+        return jsonify({"error": "api_error", "message": str(exc)}), 502
+    finally:
+        svc.close()
+
+    # Apply client-side filters (server-side would be more efficient but FortiGate API doesn't support all)
+    data = result.data
+    if validated.get("status"):
+        data = [p for p in data if p.get("status") == validated["status"]]
+    if validated.get("name"):
+        name_filter = validated["name"].lower()
+        data = [p for p in data if name_filter in (p.get("name") or "").lower()]
+
+    # Sort
+    sort_by = validated.get("sort_by", "id")
+    sort_order = validated.get("sort_order", "asc")
+    reverse = sort_order == "desc"
+    if sort_by == "id":
+        data.sort(key=lambda p: p.get("id") or p.get("policyid") or p.get("seq-num") or p.get("seqnum") or 0, reverse=reverse)
+    elif sort_by == "name":
+        data.sort(key=lambda p: (p.get("name") or "").lower(), reverse=reverse)
+    elif sort_by == "status":
+        data.sort(key=lambda p: (p.get("status") or ""), reverse=reverse)
+
+    # Paginate
+    offset = validated.get("offset", 0)
+    limit = validated.get("limit", 100)
+    total = len(data)
+    paginated = data[offset : offset + limit]
+
+    return jsonify({
+        "data": paginated,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
+        "filters_applied": validated,
+        "device_id": selected_device.id,
+        "device_name": selected_device.name,
+    })
+
+
+@client_bp.route("/dos-policies/audit")
+@login_required
+@subscription_required("dos_policy")
+def dos_policies_audit():
+    """Run DoS policy audit on all policies for a device."""
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+    selected_device, device_error = _resolve_dos_device(device_id, devices)
+    if device_error:
+        return jsonify({"error": "device_error", "message": device_error}), 400
+
+    svc, svc_error = _dos_service(selected_device)
+    if svc_error:
+        return jsonify({"error": "service_error", "message": svc_error}), 503
+
+    try:
+        result = svc.audit_policies()
+    except DosPolicyServiceError as exc:
+        logger.error("DoS policy audit failed: %s", exc)
+        return jsonify({"error": "api_error", "message": str(exc)}), 502
+    finally:
+        svc.close()
+
+    return jsonify({
+        "data": [
+            {
+                "policy_id": r.policy_id,
+                "name": r.name,
+                "status": r.status,
+                "audit_score": r.audit_score,
+                "risk_level": r.risk_level,
+                "dimensions": [
+                    {
+                        "dimension": d.dimension,
+                        "score": d.score,
+                        "findings": d.findings,
+                        "anomaly_findings": [
+                            {
+                                "anomaly_name": af.anomaly_name,
+                                "severity": af.severity,
+                                "message": af.message,
+                                "remediation": af.remediation,
+                            }
+                            for af in d.anomaly_findings
+                        ],
+                    }
+                    for d in r.dimensions
+                ],
+                "remediation": r.remediation,
+            }
+            for r in result.data
+        ],
+        "summary": result.summary,
+        "device_id": selected_device.id,
+        "device_name": selected_device.name,
+    })
+
+
+@client_bp.route("/dos-policies/<int:policy_id>")
+@login_required
+@subscription_required("dos_policy")
+def dos_policy_detail(policy_id):
+    """Return a single DoS policy's full details."""
+    devices = get_assigned_devices(current_user.id)
+    device_id = request.args.get("device_id", type=int)
+    selected_device, device_error = _resolve_dos_device(device_id, devices)
+    if device_error:
+        return jsonify({"error": "device_error", "message": device_error}), 400
+
+    svc, svc_error = _dos_service(selected_device)
+    if svc_error:
+        return jsonify({"error": "service_error", "message": svc_error}), 503
+
+    try:
+        policy = svc.get_policy(policy_id)
+    except DosPolicyServiceError as exc:
+        logger.error("DoS policy detail failed: %s", exc)
+        return jsonify({"error": "api_error", "message": str(exc)}), 502
+    finally:
+        svc.close()
+
+    if not policy:
+        return jsonify({"error": "not_found", "message": "Policy not found."}), 404
+
+    return jsonify({"data": policy, "device_id": selected_device.id, "device_name": selected_device.name})
