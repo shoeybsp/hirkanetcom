@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Error{% endblock %} | HIRKANET</title>
+<title>{% block title %}Error{% endblock %} | Hirkanet</title>
+    {% include '_brand_head.html' %}
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -15,6 +16,7 @@
     align-items: center;
     justify-content: center;
   }
+  .error-logo { display: block; width: 150px; height: auto; margin: 0 auto 2rem; }
   .error-container {
     text-align: center;
     padding: 3rem 2rem;
@@ -39,18 +41,19 @@
   .error-link {
     display: inline-block;
     padding: 0.6rem 1.5rem;
-    background: #3b82f6;
+    background: linear-gradient(135deg, #00befb 0%, #0a6cff 100%);
     color: #fff;
     text-decoration: none;
     border-radius: 6px;
     font-weight: 500;
     transition: background 0.2s;
   }
-  .error-link:hover { background: #2563eb; }
+  .error-link:hover { filter: brightness(1.1); }
 </style>
 </head>
 <body>
   <div class="error-container">
+    <img class="error-logo" src="{{ url_for('static', filename='img/hirkanet-logo.png') }}" alt="Hirkanet">
     {% block content %}{% endblock %}
   </div>
 </body>

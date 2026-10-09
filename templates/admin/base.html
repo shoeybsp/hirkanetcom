@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Admin{% endblock %} - Hirkanet</title>
+    {% include '_brand_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     {% block head %}{% endblock %}
@@ -15,7 +16,7 @@
     <aside class="hk-sidebar" id="hkSidebar">
         <div class="hk-sidebar-brand">
             <a href="{{ url_for('admin.dashboard') }}" class="hk-sidebar-logo">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                <img class="hk-brand-mark" src="{{ url_for('static', filename='img/hirkanet-mark.png') }}" alt="" width="34" height="34">
                 <span class="hk-sidebar-brand-text">Hirkanet</span>
             </a>
         </div>

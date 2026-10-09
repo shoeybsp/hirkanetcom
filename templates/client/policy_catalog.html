@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Policy Catalog - SecureTrack-Lite</title>
+    <title>Policy Catalog - Hirkanet</title>
+    {% include '_brand_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <style>
@@ -28,8 +29,8 @@
     <aside class="hk-sidebar" id="hkSidebar">
         <div class="hk-sidebar-brand">
             <a href="{{ url_for('client.dashboard') }}" class="hk-sidebar-logo">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                <span class="hk-sidebar-brand-text">SecureTrack-Lite</span>
+                <img class="hk-brand-mark" src="{{ url_for('static', filename='img/hirkanet-mark.png') }}" alt="" width="34" height="34">
+                <span class="hk-sidebar-brand-text">Hirkanet</span>
             </a>
         </div>
 
@@ -228,7 +229,7 @@
         </div>
 
         <footer class="hk-main-footer">
-            <span>SecureTrack-Lite &middot; Client Portal</span>
+            <span>Hirkanet &middot; Client Portal</span>
         </footer>
     </main>
 </div>

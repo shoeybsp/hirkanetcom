@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign In - Hirkanet</title>
+    {% include '_brand_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <style>
@@ -20,41 +21,50 @@
             min-height: 100vh;
         }
 
-        /* ---- Left branding panel ---- */
+        /* ---- Left branding panel (colours taken from the Hirkanet logo) ---- */
         .hk-login-hero {
             flex: 1;
-            background: var(--stl-surface);
-            border-right: 1px solid var(--stl-border);
+            position: relative;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             padding: 3rem;
-            position: relative;
-            overflow: hidden;
+            border-right: 1px solid rgba(0, 190, 251, 0.18);
+            background:
+                radial-gradient(ellipse 70% 55% at 50% 38%, rgba(10, 108, 255, 0.38) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 40% at 82% 88%, rgba(0, 190, 251, 0.20) 0%, transparent 70%),
+                radial-gradient(ellipse 45% 40% at 10% 90%, rgba(10, 60, 200, 0.28) 0%, transparent 70%),
+                linear-gradient(160deg, #040a1c 0%, #061436 48%, #071d52 100%);
         }
 
+        /* faint hex-grid / network texture, echoing the H-shield mark */
         .hk-login-hero::before {
             content: "";
             position: absolute;
-            top: -30%;
-            left: -20%;
-            width: 600px;
-            height: 600px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(6, 182, 212, 0.08) 0%, transparent 70%);
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0, 190, 251, 0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 190, 251, 0.06) 1px, transparent 1px);
+            background-size: 56px 56px;
+            -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 20%, transparent 78%);
+            mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 20%, transparent 78%);
             pointer-events: none;
         }
 
+        /* orbit ring that picks up the swoosh in the logo */
         .hk-login-hero::after {
             content: "";
             position: absolute;
-            bottom: -20%;
-            right: -15%;
-            width: 500px;
-            height: 500px;
+            width: 760px;
+            height: 760px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -58%) rotate(-14deg) scaleY(0.36);
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(6, 182, 212, 0.05) 0%, transparent 70%);
+            border: 1px solid rgba(0, 190, 251, 0.22);
+            box-shadow: 0 0 60px rgba(0, 190, 251, 0.10), inset 0 0 60px rgba(10, 108, 255, 0.10);
             pointer-events: none;
         }
 
@@ -62,32 +72,19 @@
             position: relative;
             z-index: 1;
             text-align: center;
-            max-width: 400px;
+            max-width: 440px;
         }
 
-        .hk-login-hero-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 72px;
-            height: 72px;
-            border-radius: 20px;
-            background: rgba(6, 182, 212, 0.1);
-            border: 1px solid rgba(6, 182, 212, 0.2);
-            color: var(--stl-primary);
-            margin-bottom: 1.5rem;
-        }
-
-        .hk-login-hero h2 {
-            color: #f8fbff;
-            font-size: 1.6rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.75rem;
+        .hk-login-logo {
+            display: block;
+            width: min(340px, 72%);
+            height: auto;
+            margin: 0 auto 1.25rem;
+            filter: drop-shadow(0 0 40px rgba(10, 108, 255, 0.45));
         }
 
         .hk-login-hero p {
-            color: var(--stl-muted);
+            color: #9db4d6;
             font-size: 0.95rem;
             line-height: 1.6;
             margin-bottom: 2rem;
@@ -97,7 +94,7 @@
             list-style: none;
             padding: 0;
             text-align: left;
-            display: flex;
+            display: inline-flex;
             flex-direction: column;
             gap: 0.75rem;
         }
@@ -106,14 +103,14 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: var(--stl-text);
+            color: #dbe8ff;
             font-size: 0.88rem;
             font-weight: 500;
         }
 
         .hk-login-features li svg {
             flex-shrink: 0;
-            color: var(--stl-primary);
+            color: #00befb;
         }
 
         /* ---- Right form panel ---- */
@@ -136,6 +133,8 @@
             text-align: center;
             margin-bottom: 2.5rem;
         }
+
+        .hk-login-mark { display: none; margin: 0 auto 1rem; filter: drop-shadow(0 0 14px rgba(0, 190, 251, 0.4)); }
 
         .hk-login-brand h1 {
             color: #f8fbff;
@@ -187,7 +186,7 @@
         .hk-login-field input:focus {
             outline: none;
             border-color: var(--stl-primary);
-            box-shadow: 0 0 0 0.2rem rgba(6, 182, 212, 0.2);
+            box-shadow: 0 0 0 0.2rem rgba(0, 190, 251, 0.2);
         }
 
         .hk-login-field input::placeholder {
@@ -199,8 +198,8 @@
             min-height: 48px;
             border: none;
             border-radius: 10px;
-            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-            box-shadow: 0 12px 28px rgba(6, 182, 212, 0.25);
+            background: linear-gradient(135deg, #00befb 0%, #0a6cff 100%);
+            box-shadow: 0 12px 28px rgba(0, 190, 251, 0.25);
             color: #fff;
             font-weight: 700;
             font-size: 0.95rem;
@@ -210,7 +209,7 @@
 
         .hk-login-submit:hover {
             transform: translateY(-1px);
-            box-shadow: 0 14px 32px rgba(6, 182, 212, 0.35);
+            box-shadow: 0 14px 32px rgba(0, 190, 251, 0.35);
         }
 
         .hk-login-submit:active {
@@ -228,10 +227,10 @@
         }
 
         .hk-login-flash {
-            background: rgba(6, 182, 212, 0.08);
-            border: 1px solid rgba(6, 182, 212, 0.2);
+            background: rgba(0, 190, 251, 0.08);
+            border: 1px solid rgba(0, 190, 251, 0.2);
             border-radius: 10px;
-            color: #a5f3fc;
+            color: #b5e8ff;
             font-size: 0.85rem;
             padding: 0.7rem 1rem;
             margin-bottom: 1rem;
@@ -258,6 +257,9 @@
             .hk-login-hero {
                 display: none;
             }
+            .hk-login-mark {
+                display: block;
+            }
             .hk-login-form-panel {
                 width: 100%;
                 min-width: 0;
@@ -271,10 +273,7 @@
     <!-- Left hero panel -->
     <div class="hk-login-hero">
         <div class="hk-login-hero-content">
-            <div class="hk-login-hero-icon">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            </div>
-            <h2>Hirkanet</h2>
+            <img class="hk-login-logo" src="{{ url_for('static', filename='img/hirkanet-logo.png') }}" alt="Hirkanet">
             <p>Unified network policy evaluation and security posture management for FortiGate environments.</p>
             <ul class="hk-login-features">
                 <li>
@@ -302,6 +301,7 @@
         <div class="hk-login-form-wrapper">
 
             <div class="hk-login-brand">
+                <img class="hk-login-mark" src="{{ url_for('static', filename='img/hirkanet-mark.png') }}" alt="" width="64" height="64">
                 <h1>Sign in to Hirkanet</h1>
                 <p>Enter your credentials to access the admin panel</p>
             </div>

@@ -8,14 +8,14 @@
     --stl-border-strong: rgba(148, 163, 184, 0.22);
     --stl-text: #e5eefc;
     --stl-muted: #8ea0b8;
-    --stl-primary: #06b6d4;
-    --stl-primary-dark: #0891b2;
-    --stl-accent: #06b6d4;
+    --stl-primary: #00befb;
+    --stl-primary-dark: #0a6cff;
+    --stl-accent: #00befb;
     --stl-warning: #f59e0b;
     --stl-success: #2fbf71;
     --stl-danger: #ef5e5e;
     --stl-shadow: 0 24px 60px rgba(2, 8, 23, 0.45);
-    --stl-ring: rgba(6, 182, 212, 0.25);
+    --stl-ring: rgba(0, 190, 251, 0.25);
 }
 
 * {
@@ -208,9 +208,9 @@ select option {
 }
 
 .stl-service-chip {
-    border: 1px solid rgba(6, 182, 212, 0.24);
+    border: 1px solid rgba(0, 190, 251, 0.24);
     border-radius: 999px;
-    background: rgba(6, 182, 212, 0.14);
+    background: rgba(0, 190, 251, 0.14);
     color: #cffafe;
     font-size: 0.8rem;
     font-weight: 700;
@@ -220,8 +220,8 @@ select option {
 }
 
 .stl-service-chip:hover {
-    border-color: rgba(6, 182, 212, 0.38);
-    background: rgba(6, 182, 212, 0.22);
+    border-color: rgba(0, 190, 251, 0.38);
+    background: rgba(0, 190, 251, 0.22);
 }
 
 .stl-service-search {
@@ -323,8 +323,8 @@ label:not(.hk-admin-layout label) {
     min-height: 48px;
     border: none;
     border-radius: 14px;
-    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-    box-shadow: 0 16px 36px rgba(6, 182, 212, 0.24);
+    background: linear-gradient(135deg, #00befb 0%, #0a6cff 100%);
+    box-shadow: 0 16px 36px rgba(0, 190, 251, 0.24);
     color: #fff;
     font-weight: 700;
     padding: 0.7rem 1.75rem;
@@ -332,8 +332,8 @@ label:not(.hk-admin-layout label) {
 
 .stl-btn-primary:hover,
 .stl-btn-primary:focus {
-    background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
-    box-shadow: 0 18px 40px rgba(6, 182, 212, 0.3);
+    background: linear-gradient(135deg, #0a6cff 0%, #0a55d6 100%);
+    box-shadow: 0 18px 40px rgba(0, 190, 251, 0.3);
 }
 
 .stl-btn-secondary {
@@ -374,9 +374,9 @@ label:not(.hk-admin-layout label) {
 }
 
 .stl-user-role-client {
-    background: rgba(6, 182, 212, 0.14);
-    color: #67e8f9;
-    border: 1px solid rgba(6, 182, 212, 0.24);
+    background: rgba(0, 190, 251, 0.14);
+    color: #7ddcff;
+    border: 1px solid rgba(0, 190, 251, 0.24);
 }
 
 .stl-username {
@@ -505,8 +505,8 @@ label:not(.hk-admin-layout label) {
     align-items: center;
     gap: 0.4rem;
     border-radius: 999px;
-    background: rgba(6, 182, 212, 0.12);
-    color: #67e8f9;
+    background: rgba(0, 190, 251, 0.12);
+    color: #7ddcff;
     font-size: 0.8rem;
     font-weight: 700;
     padding: 0.35rem 0.7rem;
@@ -715,10 +715,19 @@ label:not(.hk-admin-layout label) {
     color: var(--stl-primary);
 }
 
+.hk-brand-mark {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 8px rgba(0, 190, 251, 0.35));
+}
+
 .hk-sidebar-brand-text {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     white-space: nowrap;
 }
 
@@ -745,12 +754,12 @@ label:not(.hk-admin-layout label) {
 
 .hk-sidebar-link:hover {
     color: var(--stl-text);
-    background: rgba(6, 182, 212, 0.08);
+    background: rgba(0, 190, 251, 0.08);
 }
 
 .hk-sidebar-link.active {
     color: var(--stl-primary);
-    background: rgba(6, 182, 212, 0.12);
+    background: rgba(0, 190, 251, 0.12);
 }
 
 .hk-sidebar-link.active::before {
@@ -794,9 +803,9 @@ label:not(.hk-admin-layout label) {
     padding: 0.15rem 0.5rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    background: rgba(6, 182, 212, 0.14);
-    color: #67e8f9;
-    border: 1px solid rgba(6, 182, 212, 0.24);
+    background: rgba(0, 190, 251, 0.14);
+    color: #7ddcff;
+    border: 1px solid rgba(0, 190, 251, 0.24);
 }
 
 .hk-sidebar-username {
@@ -941,8 +950,8 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-stat-card:hover {
-    border-color: rgba(6, 182, 212, 0.3);
-    box-shadow: 0 8px 32px rgba(6, 182, 212, 0.08);
+    border-color: rgba(0, 190, 251, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 190, 251, 0.08);
 }
 
 .hk-stat-card::before {
@@ -952,7 +961,7 @@ label:not(.hk-admin-layout label) {
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, var(--stl-primary), rgba(6, 182, 212, 0.3));
+    background: linear-gradient(90deg, var(--stl-primary), rgba(0, 190, 251, 0.3));
 }
 
 .hk-stat-icon {
@@ -962,7 +971,7 @@ label:not(.hk-admin-layout label) {
     width: 44px;
     height: 44px;
     border-radius: 12px;
-    background: rgba(6, 182, 212, 0.1);
+    background: rgba(0, 190, 251, 0.1);
     color: var(--stl-primary);
     margin-bottom: 16px;
 }
@@ -997,8 +1006,8 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-mgmt-card:hover {
-    border-color: rgba(6, 182, 212, 0.35);
-    box-shadow: 0 12px 40px rgba(6, 182, 212, 0.1);
+    border-color: rgba(0, 190, 251, 0.35);
+    box-shadow: 0 12px 40px rgba(0, 190, 251, 0.1);
     transform: translateY(-2px);
     color: inherit;
 }
@@ -1010,7 +1019,7 @@ label:not(.hk-admin-layout label) {
     width: 48px;
     height: 48px;
     border-radius: 14px;
-    background: rgba(6, 182, 212, 0.1);
+    background: rgba(0, 190, 251, 0.1);
     color: var(--stl-primary);
     margin-bottom: 4px;
 }
@@ -1166,9 +1175,9 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-role-admin {
-    background: rgba(6, 182, 212, 0.15);
+    background: rgba(0, 190, 251, 0.15);
     color: var(--stl-primary);
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    border: 1px solid rgba(0, 190, 251, 0.3);
 }
 
 .hk-role-client {
@@ -1229,7 +1238,7 @@ label:not(.hk-admin-layout label) {
 
 .hk-admin-layout .table-hover > tbody > tr:hover > td,
 .hk-admin-layout .table-hover > tbody > tr:hover > th {
-    background: rgba(6, 182, 212, 0.05);
+    background: rgba(0, 190, 251, 0.05);
 }
 
 .hk-admin-layout .table td strong {
@@ -1238,7 +1247,7 @@ label:not(.hk-admin-layout label) {
 
 .hk-admin-layout .table td code {
     color: var(--stl-primary);
-    background: rgba(6, 182, 212, 0.1);
+    background: rgba(0, 190, 251, 0.1);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.82rem;
@@ -1327,20 +1336,20 @@ label:not(.hk-admin-layout label) {
 
 /* --- Buttons --- */
 .hk-admin-layout .btn-primary {
-    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+    background: linear-gradient(135deg, #00befb 0%, #0a6cff 100%);
     border: none;
     color: #fff;
     font-weight: 650;
     border-radius: 10px;
     min-height: 42px;
     padding: 0.5rem 1.25rem;
-    box-shadow: 0 8px 24px rgba(6, 182, 212, 0.2);
+    box-shadow: 0 8px 24px rgba(0, 190, 251, 0.2);
 }
 
 .hk-admin-layout .btn-primary:hover,
 .hk-admin-layout .btn-primary:focus {
-    background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
-    box-shadow: 0 10px 28px rgba(6, 182, 212, 0.3);
+    background: linear-gradient(135deg, #0a6cff 0%, #0a55d6 100%);
+    box-shadow: 0 10px 28px rgba(0, 190, 251, 0.3);
     color: #fff;
 }
 
@@ -1366,7 +1375,7 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-admin-layout .btn-outline-primary:hover {
-    background: rgba(6, 182, 212, 0.12);
+    background: rgba(0, 190, 251, 0.12);
     border-color: var(--stl-primary);
     color: var(--stl-primary);
 }
@@ -1471,7 +1480,7 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-admin-layout .badge.bg-primary {
-    background: rgba(6, 182, 212, 0.15) !important;
+    background: rgba(0, 190, 251, 0.15) !important;
     color: var(--stl-primary);
     font-weight: 600;
 }
@@ -1502,9 +1511,9 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-admin-layout .alert-info {
-    background: rgba(6, 182, 212, 0.1);
-    border-color: rgba(6, 182, 212, 0.25);
-    color: #a5f3fc;
+    background: rgba(0, 190, 251, 0.1);
+    border-color: rgba(0, 190, 251, 0.25);
+    color: #b5e8ff;
 }
 
 /* --- Close button --- */
@@ -1518,7 +1527,7 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-admin-layout a:hover {
-    color: #22d3ee;
+    color: #3ccbff;
 }
 
 .hk-admin-layout .text-muted {
@@ -1556,7 +1565,7 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-admin-layout .dropdown-item:hover {
-    background: rgba(6, 182, 212, 0.08);
+    background: rgba(0, 190, 251, 0.08);
     color: var(--stl-text);
 }
 
@@ -1597,7 +1606,7 @@ label:not(.hk-admin-layout label) {
 .hk-admin-layout input[type="file"]::file-selector-button {
     border: 1px solid var(--stl-border);
     border-radius: 8px;
-    background: rgba(6, 182, 212, 0.1);
+    background: rgba(0, 190, 251, 0.1);
     color: var(--stl-primary);
     font-weight: 600;
     padding: 6px 14px;
@@ -1606,7 +1615,7 @@ label:not(.hk-admin-layout label) {
 }
 
 .hk-admin-layout input[type="file"]::file-selector-button:hover {
-    background: rgba(6, 182, 212, 0.2);
+    background: rgba(0, 190, 251, 0.2);
 }
 
 /* --- Flash messages in content area --- */
@@ -1690,7 +1699,7 @@ label:not(.hk-admin-layout label) {
 
 .stl-dropdown-item:hover,
 .stl-dropdown-item.is-active {
-    background: rgba(6, 182, 212, 0.12);
+    background: rgba(0, 190, 251, 0.12);
     color: var(--stl-primary);
 }
 
@@ -1733,8 +1742,8 @@ label:not(.hk-admin-layout label) {
 .hk-widget-tray-label { color: var(--stl-muted); font-size: 0.85rem; }
 .hk-widget-tray-empty { color: var(--stl-muted); font-size: 0.85rem; }
 .hk-widget-chip {
-    border: 1px solid rgba(6, 182, 212, 0.4);
-    background: rgba(6, 182, 212, 0.08);
+    border: 1px solid rgba(0, 190, 251, 0.4);
+    background: rgba(0, 190, 251, 0.08);
     color: var(--stl-primary);
     border-radius: 999px;
     padding: 4px 14px;
@@ -1742,7 +1751,7 @@ label:not(.hk-admin-layout label) {
     font-weight: 600;
     cursor: pointer;
 }
-.hk-widget-chip:hover { background: rgba(6, 182, 212, 0.18); }
+.hk-widget-chip:hover { background: rgba(0, 190, 251, 0.18); }
 .hk-widget { position: relative; display: flex; }
 .hk-widget > .hk-widget-card { flex: 1; }
 .hk-widget-controls {
