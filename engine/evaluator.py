@@ -154,14 +154,43 @@ class SecureTrackLite:
             if not port_range:
                 continue
             proto = key.split("-")[0]
-            aliases.add(f"{proto}-{port_range}")
-            if "-" in port_range:
-                start, end = port_range.split("-", 1)
-                aliases.add(f"{proto}-{start}-{end}")
+            # FortiGate stores several entries space-separated ("80 443
+            # 8000-8080") and may append a source range ("443:1024-65535").
+            # Only the destination part is relevant for matching.
+            for entry in str(port_range).split():
+                destination = entry.split(":", 1)[0]
+                if not destination:
+                    continue
+                aliases.add(f"{proto}-{destination}")
+                if "-" in destination:
+                    start, end = destination.split("-", 1)
+                    aliases.add(f"{proto}-{start}-{end}")
 
         return aliases
 
+    def _is_any_service(self, name):
+        """True for the predefined ALL service (protocol IP, no protocol number)."""
+        name = name.lower()
+        svc = self.service_map.get(name)
+        if svc is None:
+            return name == "all"
+        if svc.get("group"):
+            return False
+        if name == "all":
+            return True
+        has_ports = svc.get("tcp-portrange") or svc.get("udp-portrange")
+        return (
+            svc.get("protocol") == "ip"
+            and not has_ports
+            and str(svc.get("protocol-number", 0) or 0) == "0"
+        )
+
     def _service_matches(self, requested, policy_service):
+        if self._is_any_service(policy_service) or any(
+            self._is_any_service(member)
+            for member in self.service_map.get(policy_service.lower(), {}).get("group", [])
+        ):
+            return True
         requested_aliases = self._service_aliases(requested)
         policy_aliases = self._service_aliases(policy_service)
 

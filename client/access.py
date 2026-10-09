@@ -1,7 +1,10 @@
 """Authorization helpers for subscription-backed client services."""
 
 import logging
+from datetime import datetime, timezone
 from functools import wraps
+
+from sqlalchemy import or_
 
 from flask import abort, request
 from flask_login import current_user
@@ -9,6 +12,12 @@ from flask_login import current_user
 from models import Device, DeviceAssignment, Service, Subscription, db
 
 logger = logging.getLogger(__name__)
+
+
+def _not_expired():
+    """SQL clause: the subscription has no end date or it is in the future."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return or_(Subscription.end_date.is_(None), Subscription.end_date > now)
 
 
 def has_active_service_subscription(user_id: int, service_type: str) -> bool:
@@ -19,6 +28,7 @@ def has_active_service_subscription(user_id: int, service_type: str) -> bool:
         .filter(
             Subscription.user_id == user_id,
             Subscription.is_active.is_(True),
+            _not_expired(),
             Service.service_type == service_type,
             Service.is_active.is_(True),
         )

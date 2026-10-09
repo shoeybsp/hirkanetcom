@@ -24,3 +24,12 @@ def read_secret(name: str, default: str | None = None, *, required: bool = False
         source = f"{name}_FILE or {name}"
         raise RuntimeError(f"{source} is required")
     return value
+
+
+_PLACEHOLDER_MARKERS = ("change-me", "changeme", "development-only", "replace-me", "example")
+
+
+def is_placeholder_secret(value: str | None) -> bool:
+    """True for the template/dev values shipped in env.example or the code."""
+    lowered = (value or "").strip().lower()
+    return any(marker in lowered for marker in _PLACEHOLDER_MARKERS)

@@ -44,6 +44,10 @@ def admin_required(f):
     return decorated
 
 
+def _admin_count() -> int:
+    return User.query.filter_by(role="admin").count()
+
+
 # =============================================================================
 # Admin Dashboard
 # =============================================================================
@@ -126,6 +130,11 @@ def user_edit(user_id):
             flash(f"Username '{username}' is already taken.", "error")
             return render_template("admin/user_form.html", user=user)
 
+        if user.role == "admin" and role != "admin" and _admin_count() <= 1:
+            flash("You cannot remove admin rights from the last administrator.", "error")
+            return render_template("admin/user_form.html", user=user)
+
+        role_changed = user.role != role
         user.username = username
         user.role = role
 
@@ -134,6 +143,17 @@ def user_edit(user_id):
             user.salt = ""
 
         commit_transaction("admin database change")
+        logger.info(
+            "User updated",
+            extra={
+                "event_type": "audit_user_updated",
+                "actor_user_id": str(current_user.id),
+                "target_user_id": str(user.id),
+                "role": role,
+                "role_changed": role_changed,
+                "password_changed": bool(password),
+            },
+        )
         flash(f"User '{username}' updated successfully.", "success")
         return redirect(url_for("admin.user_list"))
 
@@ -150,12 +170,16 @@ def user_delete(user_id):
         flash("You cannot delete yourself.", "error")
         return redirect(url_for("admin.user_list"))
 
+    if user.role == "admin" and _admin_count() <= 1:
+        flash("You cannot delete the last administrator.", "error")
+        return redirect(url_for("admin.user_list"))
+
     target_id=str(user.id); target_username=user.username
     db.session.delete(user)
     commit_transaction("admin database change")
     logger.info("User deleted", extra={"event_type":"audit_user_deleted","actor_user_id":str(current_user.id),"target_user_id":target_id,"target_username":target_username})
 
-    flash(f"User '{user.username}' deleted.", "success")
+    flash(f"User '{target_username}' deleted.", "success")
     return redirect(url_for("admin.user_list"))
 
 
@@ -194,6 +218,15 @@ def user_subscriptions(user_id):
                 db.session.add(sub)
 
         commit_transaction("admin database change")
+        logger.info(
+            "User subscriptions updated",
+            extra={
+                "event_type": "audit_subscriptions_updated",
+                "actor_user_id": str(current_user.id),
+                "target_user_id": str(user.id),
+                "service_ids": sorted(selected_service_ids),
+            },
+        )
         flash(f"Subscriptions for '{user.username}' updated.", "success")
         return redirect(url_for("admin.user_list"))
 
@@ -293,11 +326,20 @@ def service_edit(service_id):
 def service_delete(service_id):
     """Delete a service."""
     svc = Service.query.get_or_404(service_id)
+    service_name = svc.name
 
     db.session.delete(svc)
     commit_transaction("admin database change")
+    logger.info(
+        "Service deleted",
+        extra={
+            "event_type": "audit_service_deleted",
+            "actor_user_id": str(current_user.id),
+            "service_name": service_name,
+        },
+    )
 
-    flash(f"Service '{svc.name}' deleted.", "success")
+    flash(f"Service '{service_name}' deleted.", "success")
     return redirect(url_for("admin.service_list"))
 
 
@@ -580,6 +622,10 @@ def profile():
         user.password_hash = hash_password(new_password)
         user.salt = ""
         commit_transaction("admin database change")
+        logger.info(
+            "Admin password changed",
+            extra={"event_type": "audit_password_changed", "actor_user_id": str(current_user.id)},
+        )
         flash("Password changed successfully.", "success")
 
         return redirect(url_for("admin.profile"))

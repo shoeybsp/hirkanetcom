@@ -26,6 +26,7 @@ from validation.evaluation import EvaluationInputError, MAX_BATCH_ROWS
 from validation import ValidationError
 from validation.uploads import validate_csv_upload
 from client.access import (
+    _not_expired,
     get_assigned_devices,
     has_active_service_subscription,
     subscription_required,
@@ -204,6 +205,7 @@ def get_subscribed_services():
         .filter(
             Subscription.user_id == current_user.id,
             Subscription.is_active == True,
+            _not_expired(),
             Service.is_active == True,
         )
         .all()

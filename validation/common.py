@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Iterable, Mapping
+
+from urllib.parse import urlsplit
 
 from .errors import ValidationError
 
@@ -114,8 +117,15 @@ def service_type(value: str) -> str:
     return value
 
 
+_HOST_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+
+
 def host_address(value: str, *, field: str = "api_host") -> str:
-    """Validate a device API host/IP (with optional scheme and port)."""
+    """Validate a device API host (hostname or IP, optional scheme and port).
+
+    Rejects paths, query strings, fragments and embedded credentials so the
+    stored value can only ever address a host:port, never an arbitrary URL.
+    """
     value = (value or "").strip()
     errors: list[str] = []
     if not value:
@@ -124,6 +134,34 @@ def host_address(value: str, *, field: str = "api_host") -> str:
         errors.append("Must be at most 255 characters.")
     elif any(ch.isspace() for ch in value):
         errors.append("Must not contain whitespace.")
+    else:
+        candidate = value if "://" in value else f"https://{value}"
+        try:
+            parsed = urlsplit(candidate)
+            port = parsed.port  # raises ValueError for a bad port
+        except ValueError:
+            parsed, port = None, None
+            errors.append("Must be a valid host name or IP address with an optional port.")
+        if parsed is not None:
+            if parsed.scheme not in ("http", "https"):
+                errors.append("Only http:// or https:// schemes are allowed.")
+            elif parsed.username or parsed.password or "@" in parsed.netloc:
+                errors.append("Must not contain credentials.")
+            elif parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+                errors.append("Enter only the host and optional port, without a path.")
+            elif port is not None and not 1 <= port <= 65535:
+                errors.append("Port must be between 1 and 65535.")
+            else:
+                hostname = parsed.hostname or ""
+                try:
+                    ipaddress.ip_address(hostname)
+                    host_ok = True
+                except ValueError:
+                    host_ok = bool(hostname) and all(
+                        _HOST_LABEL_RE.fullmatch(label) for label in hostname.rstrip(".").split(".")
+                    )
+                if not host_ok:
+                    errors.append("Must be a valid host name or IP address.")
     if errors:
         raise ValidationError({field: errors})
     return value

@@ -17,7 +17,7 @@ import os
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from secret_utils import read_secret
+from secret_utils import is_placeholder_secret, read_secret
 
 _ENV_NAME = "DEVICE_CREDENTIAL_KEY"
 _DEV_ONLY_FALLBACK_MATERIAL = "development-only-device-credential-key"
@@ -40,6 +40,11 @@ def _fernet_key_from_material(material: str) -> bytes:
 def _load_fernet() -> Fernet:
     env = os.getenv("APP_ENV", "development").lower()
     material = read_secret(_ENV_NAME, required=env == "production")
+    if env == "production" and (len(material or "") < 32 or is_placeholder_secret(material)):
+        raise CredentialEncryptionError(
+            "DEVICE_CREDENTIAL_KEY must be a unique random value of at least "
+            "32 characters in production."
+        )
     if not material:
         # Only reached outside production, since read_secret raises above
         # when required=True and no value is configured.

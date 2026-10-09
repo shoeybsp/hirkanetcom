@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from urllib.parse import urlsplit
 
 import click
 from flask import Flask, render_template, jsonify, redirect, url_for, flash, request, g
@@ -19,17 +20,25 @@ configure_logging()
 logger = logging.getLogger(__name__)
 from models import db, User, init_db, seed_defaults
 from auth.forms import LoginForm
-from security import verify_password
+from security import hash_password, verify_password
 from auth.rate_limit import check_login_allowed, clear_login_failures, record_login_failure
-from secret_utils import read_secret
+from secret_utils import is_placeholder_secret, read_secret
 from database_transactions import (
     DatabaseTransactionError,
     commit_transaction,
 )
 
+_DUMMY_USER = type("DummyUser", (), {})()
+_DUMMY_USER.password_hash = hash_password("timing-equalisation-placeholder")
+_DUMMY_USER.salt = ""
+
 app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
 env = os.getenv("APP_ENV", "development").lower()
 secret = read_secret("SECRET_KEY", required=env == "production")
+if env == "production" and (len(secret or "") < 32 or is_placeholder_secret(secret)):
+    raise RuntimeError(
+        "SECRET_KEY must be a unique random value of at least 32 characters in production"
+    )
 trusted_hosts = [
     host.strip()
     for host in os.getenv("TRUSTED_HOSTS", "hirkanet.com,www.hirkanet.com,localhost,127.0.0.1").split(",")
@@ -122,12 +131,35 @@ def seed_defaults_command():
     print("Hirkanet default data is present.")
 
 
+@app.cli.command("cleanup-login-limits")
+def cleanup_login_limits_command():
+    """Delete stale failed-login counters (run periodically, e.g. daily)."""
+    from auth.rate_limit import cleanup_expired_login_limits
+    print(f"Removed {cleanup_expired_login_limits()} stale login rate-limit rows.")
+
+
 @app.template_filter("nl2p")
 def nl2p(text):
     from markupsafe import Markup, escape
     if not text: return Markup("")
     paragraphs=[p.strip() for p in text.replace("\r\n","\n").split("\n\n") if p.strip()]
     return Markup("".join(f"<p>{escape(p).replace(chr(10), '<br>')}</p>" for p in paragraphs))
+
+def _is_safe_next(target):
+    """Allow only same-site, path-only redirect targets.
+
+    Browsers treat a backslash like a forward slash, so "/\\evil.example"
+    is equivalent to the protocol-relative "//evil.example".
+    """
+    if not target or not target.startswith("/"):
+        return False
+    if target.startswith("//") or "\\" in target:
+        return False
+    if any(ord(ch) < 32 for ch in target):
+        return False
+    parsed = urlsplit(target)
+    return not parsed.scheme and not parsed.netloc
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -163,6 +195,10 @@ def login():
             return response, 429, {"Retry-After": str(decision.retry_after)}
 
         user = User.query.filter_by(username=username).first()
+        if user is None:
+            # Burn comparable time so response latency does not reveal
+            # whether the username exists.
+            verify_password(_DUMMY_USER, password)
         if user is not None and verify_password(user, password):
             commit_transaction("upgrade authenticated user credentials")
             clear_login_failures(username)
@@ -176,7 +212,7 @@ def login():
                 },
             )
             next_page = request.args.get("next")
-            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+            if _is_safe_next(next_page):
                 return redirect(next_page)
             if user.role == "admin":
                 return redirect(url_for("admin.dashboard"))

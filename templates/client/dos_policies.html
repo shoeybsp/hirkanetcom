@@ -400,7 +400,7 @@ function renderTable(policies) {
         html += '<td style="font-size:0.85rem;">' + escHtml(dst) + '</td>';
         html += '<td><span class="anomaly-tag anomaly-enabled">' + enabledCount + '/' + totalAnomalies + '</span></td>';
         html += '<td>';
-        html += '<button class="btn btn-sm btn-outline-info me-1" onclick="viewPolicy(' + (p.id || p.policyid) + ')">View</button>';
+        html += '<button class="btn btn-sm btn-outline-info me-1" onclick="viewPolicy(' + Number(p.id || p.policyid || 0) + ')">View</button>';
         html += '</td>';
         html += '</tr>';
     }
@@ -541,7 +541,7 @@ function renderAuditTable(results) {
     var html = '';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
-        var levelClass = 'risk-' + r.risk_level;
+        var levelClass = 'risk-' + escHtml(r.risk_level);
         // audit_score is a posture score (higher = better), so the bar
         // is green at the top. risk_level is derived as
         // _risk_level(100 - audit_score), so the two agree.
@@ -549,9 +549,9 @@ function renderAuditTable(results) {
         html += '<tr>';
         html += '<td>' + (r.policy_id || '-') + '</td>';
         html += '<td><strong>' + escHtml(r.name || '') + '</strong></td>';
-        html += '<td><span class="status-badge status-' + r.status + '">' + escHtml(r.status) + '</span></td>';
+        html += '<td><span class="status-badge status-' + escHtml(r.status) + '">' + escHtml(r.status) + '</span></td>';
         html += '<td><span class="audit-score"><span class="audit-score-bar" style="width:' + r.audit_score + 'px; background:' + barColor + ';"></span> ' + r.audit_score + '/100</span></td>';
-        html += '<td><span class="risk-badge ' + levelClass + '">' + r.risk_level + '</span></td>';
+        html += '<td><span class="risk-badge ' + levelClass + '">' + escHtml(r.risk_level) + '</span></td>';
         html += '<td><button class="btn btn-sm btn-outline-info" onclick="viewAuditDetail(' + i + ')">Details</button></td>';
         html += '</tr>';
     }
